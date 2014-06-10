@@ -18,8 +18,10 @@ namespace AwsDedupSync
         static bool UpdateLinks = true;
         static bool UploadBlobs = true;
 
-        static readonly Task DoneTask = Task.FromResult(string.Empty);
-        static readonly DataflowLinkOptions DataflowLinkOptionsPropagateEnabled = new DataflowLinkOptions { PropagateCompletion = true };
+        static readonly DataflowLinkOptions DataflowLinkOptionsPropagateEnabled = new DataflowLinkOptions
+                                                                                  {
+                                                                                      PropagateCompletion = true
+                                                                                  };
 
         static string ForceTrailingSlash(string path)
         {
@@ -82,19 +84,19 @@ namespace AwsDedupSync
 
                 var blobDispatcher = new ActionBlock<IBlob>(
                     async blob =>
-                          {
-                              if (UpdateLinks)
-                                  await allBlobs.SendAsync(blob).ConfigureAwait(false);
+                    {
+                        if (UpdateLinks)
+                            await allBlobs.SendAsync(blob).ConfigureAwait(false);
 
-                              if (UploadBlobs && fingerprints.TryAdd(blob.Fingerprint, blob))
-                                  await uniqueFingerprints.SendAsync(blob).ConfigureAwait(false);
-                          });
+                        if (UploadBlobs && fingerprints.TryAdd(blob.Fingerprint, blob))
+                            await uniqueFingerprints.SendAsync(blob).ConfigureAwait(false);
+                    });
 
                 var ttt = blobDispatcher.Completion.ContinueWith(t =>
-                                                       {
-                                                           allBlobs.Complete();
-                                                           uniqueFingerprints.Complete();
-                                                       });
+                                                                 {
+                                                                     allBlobs.Complete();
+                                                                     uniqueFingerprints.Complete();
+                                                                 });
 
                 var distinctPaths = paths.Select(p => p.Path).Distinct(StringComparer.InvariantCultureIgnoreCase).ToArray();
 
@@ -122,24 +124,24 @@ namespace AwsDedupSync
                 {
                     var uploader = new ActionBlock<IBlob>(
                         async blob =>
-                              {
-                                  if (knowObjects.ContainsKey(HttpServerUtility.UrlTokenEncode(blob.Fingerprint.Sha3_512)))
-                                      return;
+                        {
+                            if (knowObjects.ContainsKey(HttpServerUtility.UrlTokenEncode(blob.Fingerprint.Sha3_512)))
+                                return;
 
-                                  try
-                                  {
-                                      // ReSharper disable once AccessToDisposedClosure
-                                      await UploadBlobAsync(s3Manager, blob, CancellationToken.None).ConfigureAwait(false);
+                            try
+                            {
+                                // ReSharper disable once AccessToDisposedClosure
+                                await UploadBlobAsync(s3Manager, blob, CancellationToken.None).ConfigureAwait(false);
 
-                                      return;
-                                  }
-                                  catch (Exception ex)
-                                  {
-                                      Console.WriteLine("Upload of {0} failed (retrying): {1}", blob.FullPath, ex.Message);
-                                  }
+                                return;
+                            }
+                            catch (Exception ex)
+                            {
+                                Console.WriteLine("Upload of {0} failed (retrying): {1}", blob.FullPath, ex.Message);
+                            }
 
-                                  await uniqueFingerprints.SendAsync(blob).ConfigureAwait(false);
-                              }, new ExecutionDataflowBlockOptions
+                            await uniqueFingerprints.SendAsync(blob).ConfigureAwait(false);
+                        }, new ExecutionDataflowBlockOptions
                                  {
                                      MaxDegreeOfParallelism = 12
                                  });
@@ -156,11 +158,12 @@ namespace AwsDedupSync
         static async Task CreateLinksAsync(S3Manager s3Manager, ILookup<string, string> linkPaths, BufferBlock<IBlob> allBlobs)
         {
             // ReSharper disable once AccessToDisposedClosure
-            var pathTasks = linkPaths.Select(namePath => new
-                                                         {
-                                                             NamePath = namePath,
-                                                             TreeTask = s3Manager.ListTreeAsync(namePath.Key, CancellationToken.None)
-                                                         }).ToArray();
+            var pathTasks = linkPaths.Select(
+                namePath => new
+                            {
+                                NamePath = namePath,
+                                TreeTask = s3Manager.ListTreeAsync(namePath.Key, CancellationToken.None)
+                            }).ToArray();
 
             await Task.WhenAll(pathTasks.Select(pt => pt.TreeTask)).ConfigureAwait(false);
 
