@@ -1,0 +1,48 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio 2013
+VisualStudioVersion = 12.0.30501.0
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AwsDedupSync", "AwsDedupSync\AwsDedupSync.csproj", "{BF670389-A661-427A-ACA0-9B83E2C976E0}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AwsSyncer", "AwsSyncer\AwsSyncer.csproj", "{7A6F1FE7-3607-4D38-AF58-4D960F43760F}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "Keccak", "Keccak\Keccak.vcxproj", "{2DC0AD6E-CD87-4679-A1BE-F29FD931681B}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Win32 = Debug|Win32
+		Debug|x64 = Debug|x64
+		Release|Win32 = Release|Win32
+		Release|x64 = Release|x64
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{BF670389-A661-427A-ACA0-9B83E2C976E0}.Debug|Win32.ActiveCfg = Debug|x86
+		{BF670389-A661-427A-ACA0-9B83E2C976E0}.Debug|Win32.Build.0 = Debug|x86
+		{BF670389-A661-427A-ACA0-9B83E2C976E0}.Debug|x64.ActiveCfg = Debug|x64
+		{BF670389-A661-427A-ACA0-9B83E2C976E0}.Debug|x64.Build.0 = Debug|x64
+		{BF670389-A661-427A-ACA0-9B83E2C976E0}.Release|Win32.ActiveCfg = Release|x86
+		{BF670389-A661-427A-ACA0-9B83E2C976E0}.Release|Win32.Build.0 = Release|x86
+		{BF670389-A661-427A-ACA0-9B83E2C976E0}.Release|x64.ActiveCfg = Release|x64
+		{BF670389-A661-427A-ACA0-9B83E2C976E0}.Release|x64.Build.0 = Release|x64
+		{7A6F1FE7-3607-4D38-AF58-4D960F43760F}.Debug|Win32.ActiveCfg = Debug|x86
+		{7A6F1FE7-3607-4D38-AF58-4D960F43760F}.Debug|Win32.Build.0 = Debug|x86
+		{7A6F1FE7-3607-4D38-AF58-4D960F43760F}.Debug|x64.ActiveCfg = Debug|x64
+		{7A6F1FE7-3607-4D38-AF58-4D960F43760F}.Debug|x64.Build.0 = Debug|x64
+		{7A6F1FE7-3607-4D38-AF58-4D960F43760F}.Release|Win32.ActiveCfg = Release|x86
+		{7A6F1FE7-3607-4D38-AF58-4D960F43760F}.Release|Win32.Build.0 = Release|x86
+		{7A6F1FE7-3607-4D38-AF58-4D960F43760F}.Release|x64.ActiveCfg = Release|x64
+		{7A6F1FE7-3607-4D38-AF58-4D960F43760F}.Release|x64.Build.0 = Release|x64
+		{2DC0AD6E-CD87-4679-A1BE-F29FD931681B}.Debug|Win32.ActiveCfg = Debug|Win32
+		{2DC0AD6E-CD87-4679-A1BE-F29FD931681B}.Debug|Win32.Build.0 = Debug|Win32
+		{2DC0AD6E-CD87-4679-A1BE-F29FD931681B}.Debug|x64.ActiveCfg = Debug|x64
+		{2DC0AD6E-CD87-4679-A1BE-F29FD931681B}.Debug|x64.Build.0 = Debug|x64
+		{2DC0AD6E-CD87-4679-A1BE-F29FD931681B}.Release|Win32.ActiveCfg = Release|Win32
+		{2DC0AD6E-CD87-4679-A1BE-F29FD931681B}.Release|Win32.Build.0 = Release|Win32
+		{2DC0AD6E-CD87-4679-A1BE-F29FD931681B}.Release|x64.ActiveCfg = Release|x64
+		{2DC0AD6E-CD87-4679-A1BE-F29FD931681B}.Release|x64.Build.0 = Release|x64
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+EndGlobal
