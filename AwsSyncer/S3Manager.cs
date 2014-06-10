@@ -3,26 +3,25 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using System.Security.AccessControl;
 using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Web;
-using Amazon;
 using Amazon.S3;
 using Amazon.S3.Model;
-using Amazon.S3.Transfer;
 
 namespace AwsSyncer
 {
     public sealed class S3Manager : IDisposable
     {
+        const double ToGiB = 1.0 / (1024 * 1024 * 1024);
         readonly IAmazonS3 _amazon;
         readonly string _bucket;
         IReadOnlyDictionary<string, long> _keys;
 
-        public IReadOnlyDictionary<string, long> Keys { get { return _keys; } }
         public S3Manager(string bucket)
         {
             if (bucket == null)
@@ -30,6 +29,11 @@ namespace AwsSyncer
 
             _bucket = bucket;
             _amazon = new AmazonS3Client();
+        }
+
+        public IReadOnlyDictionary<string, long> Keys
+        {
+            get { return _keys; }
         }
 
         #region IDisposable Members
@@ -40,6 +44,11 @@ namespace AwsSyncer
         }
 
         #endregion
+
+        static double BytesToGiB(long value)
+        {
+            return value * ToGiB;
+        }
 
         public async Task ScanAsync(CancellationToken cancellationToken)
         {
@@ -66,6 +75,9 @@ namespace AwsSyncer
                 if (!response.IsTruncated)
                 {
                     _keys = keys;
+
+                    Debug.WriteLine("Blob {0} items {1}GiB", _keys.Count, BytesToGiB(_keys.Values.Sum()));
+
                     return;
                 }
 
@@ -89,20 +101,20 @@ namespace AwsSyncer
                 var md5Digest = Convert.ToBase64String(fingerprint.Md5);
 
                 var request = new PutObjectRequest
-                             {
-                                 BucketName = _bucket,
-                                 InputStream = s,
-                                 Key = "b/" + HttpServerUtility.UrlTokenEncode(fingerprint.Sha3_512),
-                                 MD5Digest = md5Digest,
-                                 Headers =
-                                 {
-                                     ContentType = MimeDetector.Default.GetMimeType(blob.FullPath),
-                                     ContentLength = fingerprint.Size,
-                                     ContentMD5 = md5Digest
-                                 },
-                                 AutoCloseStream = false,
-                                 AutoResetStreamPosition = false
-                             };
+                              {
+                                  BucketName = _bucket,
+                                  InputStream = s,
+                                  Key = "b/" + HttpServerUtility.UrlTokenEncode(fingerprint.Sha3_512),
+                                  MD5Digest = md5Digest,
+                                  Headers =
+                                  {
+                                      ContentType = MimeDetector.Default.GetMimeType(blob.FullPath),
+                                      ContentLength = fingerprint.Size,
+                                      ContentMD5 = md5Digest
+                                  },
+                                  AutoCloseStream = false,
+                                  AutoResetStreamPosition = false
+                              };
 
                 request.Headers["x-amz-meta-SHA2-256"] = Convert.ToBase64String(fingerprint.Sha2_256);
                 request.Headers["x-amz-meta-SHA3-512"] = Convert.ToBase64String(fingerprint.Sha3_512);
@@ -129,10 +141,10 @@ namespace AwsSyncer
             var files = new Dictionary<string, string>();
 
             var request = new ListObjectsRequest
-            {
-                BucketName = _bucket,
-                Prefix = "t/" + name + "/"
-            };
+                          {
+                              BucketName = _bucket,
+                              Prefix = "t/" + name + "/"
+                          };
 
             for (; ; )
             {
@@ -147,6 +159,8 @@ namespace AwsSyncer
 
                 if (!response.IsTruncated)
                 {
+                    Debug.WriteLine("Links {0} in tree {1}", files.Count, name);
+
                     return new ReadOnlyDictionary<string, string>(files);
                 }
 
@@ -167,14 +181,14 @@ namespace AwsSyncer
             }
 
             var request = new PutObjectRequest
-            {
-                BucketName = _bucket,
-                ContentBody = link,
-                Key = treeKey + path,
-                MD5Digest = md5Digest,
-                WebsiteRedirectLocation = link,
-                ContentType = MimeDetector.Default.GetMimeType(blob.FullPath)
-            };
+                          {
+                              BucketName = _bucket,
+                              ContentBody = link,
+                              Key = treeKey + path,
+                              MD5Digest = md5Digest,
+                              WebsiteRedirectLocation = link,
+                              ContentType = MimeDetector.Default.GetMimeType(blob.FullPath)
+                          };
 
             var response = await _amazon.PutObjectAsync(request, cancellationToken).ConfigureAwait(false);
         }
