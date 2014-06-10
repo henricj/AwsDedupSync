@@ -5,6 +5,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Security.AccessControl;
+using System.Security.Cryptography;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Threading.Tasks.Dataflow;
@@ -19,6 +20,7 @@ namespace AwsSyncer
         readonly CancellationTokenSource _cancellationTokenSource = new CancellationTokenSource();
         readonly StreamFingerprinter _fingerprinter;
         readonly TaskCompletionSource<object> _managerDone = new TaskCompletionSource<object>();
+        readonly Random _random = CreateRandom();
         readonly ConcurrentQueue<IBlob> _updateKnownBlobs = new ConcurrentQueue<IBlob>();
 
         Dictionary<string, IBlob> _knownBlobs;
@@ -235,37 +237,81 @@ namespace AwsSyncer
             return uri.IsAbsoluteUri ? uri.Host : string.Empty;
         }
 
+        /// <summary>
+        ///     Fisher–Yates shuffle
+        /// </summary>
+        /// <typeparam name="T"></typeparam>
+        /// <param name="list"></param>
+        void Shuffle<T>(IList<T> list)
+        {
+            lock (_random)
+            {
+                for (var i = list.Count - 1; i >= 1; --i)
+                {
+                    var j = _random.Next(i + 1);
+
+                    var tmp = list[i];
+                    list[i] = list[j];
+                    list[j] = tmp;
+                }
+            }
+        }
+
+        static Random CreateRandom()
+        {
+            using (var rng = RandomNumberGenerator.Create())
+            {
+                var buffer = new byte[4];
+
+                rng.GetBytes(buffer);
+
+                return new Random(BitConverter.ToInt32(buffer, 0));
+            }
+        }
+
         void GenerateBlobs(string[] args, ITargetBlock<IBlob> blobTargetBlock)
         {
             try
             {
                 var targets = new ConcurrentDictionary<string, TransformBlock<string, IBlob>>(StringComparer.InvariantCultureIgnoreCase);
 
-                var routeBlock = new ActionBlock<string>(
-                    filename =>
+                var routeBlock = new ActionBlock<string[]>(
+                    async filenames =>
                     {
-                        var host = GetHost(filename);
+                        Shuffle(filenames);
 
-                        TransformBlock<string, IBlob> target;
-                        while (!targets.TryGetValue(host, out target))
+                        foreach (var filename in filenames)
                         {
-                            target = new TransformBlock<string, IBlob>((Func<string, Task<IBlob>>)ProcessFileAsync,
-                                new ExecutionDataflowBlockOptions
-                                {
-                                    MaxDegreeOfParallelism = 5
-                                });
+                            var host = GetHost(filename);
 
-                            if (!targets.TryAdd(host, target))
-                                continue;
+                            TransformBlock<string, IBlob> target;
+                            while (!targets.TryGetValue(host, out target))
+                            {
+                                target = new TransformBlock<string, IBlob>((Func<string, Task<IBlob>>)ProcessFileAsync,
+                                    new ExecutionDataflowBlockOptions
+                                    {
+                                        MaxDegreeOfParallelism = 5
+                                    });
 
-                            target.LinkTo(blobTargetBlock, blob => null != blob);
-                            target.LinkTo(DataflowBlock.NullTarget<IBlob>());
+                                if (!targets.TryAdd(host, target))
+                                    continue;
 
-                            break;
+                                target.LinkTo(blobTargetBlock, blob => null != blob);
+                                target.LinkTo(DataflowBlock.NullTarget<IBlob>());
+
+                                break;
+                            }
+
+                            await target.SendAsync(filename).ConfigureAwait(false);
                         }
-
-                        return target.SendAsync(filename);
                     });
+
+                var batcher = new BatchBlock<string>(1024);
+
+                batcher.LinkTo(routeBlock, new DataflowLinkOptions
+                                           {
+                                               PropagateCompletion = true
+                                           });
 
                 routeBlock.Completion.ContinueWith(t =>
                                                    {
@@ -286,7 +332,7 @@ namespace AwsSyncer
                               .SelectMany(p => p)
                               .SelectMany(ScanDirectory)
                               .Distinct(StringComparer.InvariantCultureIgnoreCase)
-                              .ForAll(f => routeBlock.Post(f));
+                              .ForAll(f => batcher.Post(f));
                 }
                 finally
                 {
