@@ -19,9 +19,9 @@ namespace AwsDedupSync
         static bool UploadBlobs = true;
 
         static readonly DataflowLinkOptions DataflowLinkOptionsPropagateEnabled = new DataflowLinkOptions
-                                                                                  {
-                                                                                      PropagateCompletion = true
-                                                                                  };
+        {
+            PropagateCompletion = true
+        };
 
         static string ForceTrailingSlash(string path)
         {
@@ -65,10 +65,10 @@ namespace AwsDedupSync
                          let split = arg.IndexOf('=')
                          let validSplit = split > 0 && split < arg.Length - 1
                          select new
-                                {
-                                    Name = validSplit ? arg.Substring(0, split) : null,
-                                    Path = ForceTrailingSlash(Path.GetFullPath(validSplit ? arg.Substring(split + 1) : arg))
-                                })
+                         {
+                             Name = validSplit ? arg.Substring(0, split) : null,
+                             Path = ForceTrailingSlash(Path.GetFullPath(validSplit ? arg.Substring(split + 1) : arg))
+                         })
                 .Distinct()
                 .ToArray();
 
@@ -88,15 +88,23 @@ namespace AwsDedupSync
                         if (UpdateLinks)
                             await allBlobs.SendAsync(blob).ConfigureAwait(false);
 
-                        if (UploadBlobs && fingerprints.TryAdd(blob.Fingerprint, blob))
-                            await uniqueFingerprints.SendAsync(blob).ConfigureAwait(false);
+                        if (UploadBlobs)
+                        {
+                            if (fingerprints.TryAdd(blob.Fingerprint, blob))
+                            {
+                                //Trace.WriteLine(string.Format("Queueing {0} for upload", blob.FullPath));
+                                await uniqueFingerprints.SendAsync(blob).ConfigureAwait(false);
+                            }
+                            //else
+                            //    Trace.WriteLine(string.Format("Skipping {0} for upload", blob.FullPath));
+                        }
                     });
 
                 var ttt = blobDispatcher.Completion.ContinueWith(t =>
-                                                                 {
-                                                                     allBlobs.Complete();
-                                                                     uniqueFingerprints.Complete();
-                                                                 });
+                {
+                    allBlobs.Complete();
+                    uniqueFingerprints.Complete();
+                });
 
                 var distinctPaths = paths.Select(p => p.Path).Distinct(StringComparer.InvariantCultureIgnoreCase).ToArray();
 
@@ -112,6 +120,8 @@ namespace AwsDedupSync
                     {
                         var linksTask = CreateLinksAsync(s3Manager, livePaths, allBlobs);
 
+                        linksTask.ContinueWith(t => Trace.WriteLine("Done processing links"));
+
                         tasks.Add(linksTask);
                     }
                 }
@@ -125,9 +135,6 @@ namespace AwsDedupSync
                     var uploader = new ActionBlock<IBlob>(
                         async blob =>
                         {
-                            if (knowObjects.ContainsKey(HttpServerUtility.UrlTokenEncode(blob.Fingerprint.Sha3_512)))
-                                return;
-
                             try
                             {
                                 // ReSharper disable once AccessToDisposedClosure
@@ -142,11 +149,41 @@ namespace AwsDedupSync
 
                             await uniqueFingerprints.SendAsync(blob).ConfigureAwait(false);
                         }, new ExecutionDataflowBlockOptions
-                                 {
-                                     MaxDegreeOfParallelism = 12
-                                 });
+                        {
+                            MaxDegreeOfParallelism = 12
+                        });
 
-                    uniqueFingerprints.LinkTo(uploader, DataflowLinkOptionsPropagateEnabled);
+                    var blobCount = 0;
+                    var blobTotalSize = 0L;
+
+                    var uploaderCounter = new TransformBlock<IBlob, IBlob>(blob =>
+                    {
+                        Interlocked.Increment(ref blobCount);
+
+                        Interlocked.Add(ref blobTotalSize, blob.Fingerprint.Size);
+
+                        return blob;
+                    });
+
+                    uploaderCounter.Completion.ContinueWith(t => Trace.WriteLine(string.Format("Uploader done queueing {0} items {1:F2}GiB", blobCount, blobTotalSize * (1.0 / (1024 * 1024 * 1024)))));
+
+                    uploaderCounter.LinkTo(uploader, DataflowLinkOptionsPropagateEnabled);
+
+                    uniqueFingerprints.LinkTo(uploaderCounter, DataflowLinkOptionsPropagateEnabled,
+                        blob =>
+                        {
+                            var exists = knowObjects.ContainsKey(HttpServerUtility.UrlTokenEncode(blob.Fingerprint.Sha3_512));
+
+                            //Trace.WriteLine(string.Format("{0} {1}", blob.FullPath, exists ? "already exists" : "scheduled for upload"));
+
+                            return !exists;
+                        });
+
+                    uniqueFingerprints.LinkTo(DataflowBlock.NullTarget<IBlob>());
+
+#if DEBUG
+                    uploader.Completion.ContinueWith(t => Debug.WriteLine("Done uploading blobs"));
+#endif
 
                     tasks.Add(uploader.Completion);
                 }
@@ -160,18 +197,18 @@ namespace AwsDedupSync
             // ReSharper disable once AccessToDisposedClosure
             var pathTasks = linkPaths.Select(
                 namePath => new
-                            {
-                                NamePath = namePath,
-                                TreeTask = s3Manager.ListTreeAsync(namePath.Key, CancellationToken.None)
-                            }).ToArray();
+                {
+                    NamePath = namePath,
+                    TreeTask = s3Manager.ListTreeAsync(namePath.Key, CancellationToken.None)
+                }).ToArray();
 
             await Task.WhenAll(pathTasks.Select(pt => pt.TreeTask)).ConfigureAwait(false);
 
             var linkTrees = pathTasks.Select(pt => new
-                                                   {
-                                                       pt.NamePath,
-                                                       Tree = pt.TreeTask.Result
-                                                   }).ToArray();
+            {
+                pt.NamePath,
+                Tree = pt.TreeTask.Result
+            }).ToArray();
 
             var linkDispatcher = new ActionBlock<IBlob>(
                 async blob =>
@@ -183,8 +220,8 @@ namespace AwsDedupSync
                         foreach (var linkTree in linkTrees)
                         {
                             tasks.AddRange(linkTree.NamePath
-                                                   .Select(path => CreateLinkAsync(s3Manager, linkTree.NamePath.Key, path, blob, linkTree.Tree))
-                                                   .Where(task => null != task));
+                                .Select(path => CreateLinkAsync(s3Manager, linkTree.NamePath.Key, path, blob, linkTree.Tree))
+                                .Where(task => null != task));
                         }
 
                         await Task.WhenAll(tasks).ConfigureAwait(false);
@@ -194,9 +231,9 @@ namespace AwsDedupSync
                         Console.WriteLine("Link creation failed: " + ex.Message);
                     }
                 }, new ExecutionDataflowBlockOptions
-                         {
-                             MaxDegreeOfParallelism = 12
-                         });
+                {
+                    MaxDegreeOfParallelism = 12
+                });
 
             allBlobs.LinkTo(linkDispatcher, DataflowLinkOptionsPropagateEnabled);
 
@@ -268,25 +305,25 @@ namespace AwsDedupSync
             var count = Math.Max(Environment.ProcessorCount * 2, 12);
 
             var workerTasks = Enumerable.Range(1, count)
-                                        .Select(async i =>
-                                                      {
-                                                          for (; ; )
-                                                          {
-                                                              IBlob blob;
-                                                              if (!queue.TryTake(out blob))
-                                                                  return;
+                .Select(async i =>
+                {
+                    for (; ; )
+                    {
+                        IBlob blob;
+                        if (!queue.TryTake(out blob))
+                            return;
 
-                                                              try
-                                                              {
-                                                                  await UploadBlobAsync(s3Manager, blob, CancellationToken.None).ConfigureAwait(false);
-                                                              }
-                                                              catch (Exception ex)
-                                                              {
-                                                                  Console.WriteLine("Upload of {0} failed (retrying): {1}", blob.FullPath, ex.Message);
-                                                                  queue.Add(blob);
-                                                              }
-                                                          }
-                                                      });
+                        try
+                        {
+                            await UploadBlobAsync(s3Manager, blob, CancellationToken.None).ConfigureAwait(false);
+                        }
+                        catch (Exception ex)
+                        {
+                            Console.WriteLine("Upload of {0} failed (retrying): {1}", blob.FullPath, ex.Message);
+                            queue.Add(blob);
+                        }
+                    }
+                });
             return Task.WhenAll(workerTasks);
         }
     }
