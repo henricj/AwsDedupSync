@@ -76,7 +76,7 @@ namespace AwsSyncer
                 {
                     _keys = keys;
 
-                    Debug.WriteLine("Blob {0} items {1}GiB", _keys.Count, BytesToGiB(_keys.Values.Sum()));
+                    Trace.WriteLine(string.Format("Bucket b/ contains {0} items {1:F2}GiB", _keys.Count, BytesToGiB(_keys.Values.Sum())));
 
                     return;
                 }
@@ -159,7 +159,7 @@ namespace AwsSyncer
 
                 if (!response.IsTruncated)
                 {
-                    Debug.WriteLine("Links {0} in tree {1}", files.Count, name);
+                    Trace.WriteLine(string.Format("Links {0} in tree {1}", files.Count, name));
 
                     return new ReadOnlyDictionary<string, string>(files);
                 }
