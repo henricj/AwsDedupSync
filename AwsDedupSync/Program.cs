@@ -41,7 +41,7 @@ namespace AwsDedupSync
             {
                 sw.Start();
 
-                RunAsync(args).Wait();
+                RunAsync(args, CancellationToken.None).Wait();
 
                 sw.Stop();
             }
@@ -57,7 +57,7 @@ namespace AwsDedupSync
             Console.WriteLine("Elapsed: {0} CPU {1} User {2}", sw.Elapsed, process.TotalProcessorTime, process.UserProcessorTime);
         }
 
-        static Task RunAsync(string[] args)
+        static async Task RunAsync(string[] args, CancellationToken cancellationToken)
         {
             // BEWARE:  This could cause trouble if there are
             // any case-sensitive paths involved.
@@ -86,14 +86,14 @@ namespace AwsDedupSync
                     async blob =>
                     {
                         if (UpdateLinks)
-                            await allBlobs.SendAsync(blob).ConfigureAwait(false);
+                            await allBlobs.SendAsync(blob, cancellationToken).ConfigureAwait(false);
 
                         if (UploadBlobs)
                         {
                             if (fingerprints.TryAdd(blob.Fingerprint, blob))
                             {
                                 //Trace.WriteLine(string.Format("Queueing {0} for upload", blob.FullPath));
-                                await uniqueFingerprints.SendAsync(blob).ConfigureAwait(false);
+                                await uniqueFingerprints.SendAsync(blob, cancellationToken).ConfigureAwait(false);
                             }
                             //else
                             //    Trace.WriteLine(string.Format("Skipping {0} for upload", blob.FullPath));
@@ -104,11 +104,13 @@ namespace AwsDedupSync
                 {
                     allBlobs.Complete();
                     uniqueFingerprints.Complete();
-                });
+                }, cancellationToken);
+
+                tasks.Add(ttt);
 
                 var distinctPaths = paths.Select(p => p.Path).Distinct(StringComparer.InvariantCultureIgnoreCase).ToArray();
 
-                var loadBlobTask = Task.Run(() => blobManager.Load(distinctPaths, blobDispatcher));
+                var loadBlobTask = Task.Run(() => blobManager.Load(distinctPaths, blobDispatcher), cancellationToken);
 
                 tasks.Add(loadBlobTask);
 
@@ -118,15 +120,17 @@ namespace AwsDedupSync
 
                     if (livePaths.Count > 0)
                     {
-                        var linksTask = CreateLinksAsync(s3Manager, livePaths, allBlobs);
-
-                        linksTask.ContinueWith(t => Trace.WriteLine("Done processing links"));
+                        var linksTask = CreateLinksAsync(s3Manager, livePaths, allBlobs, cancellationToken);
 
                         tasks.Add(linksTask);
+
+                        var traceTask = linksTask.ContinueWith(t => Trace.WriteLine("Done processing links"), cancellationToken);
+
+                        tasks.Add(traceTask);
                     }
                 }
 
-                s3Manager.ScanAsync(CancellationToken.None).Wait();
+                await s3Manager.ScanAsync(cancellationToken).ConfigureAwait(false);
 
                 var knowObjects = s3Manager.Keys;
 
@@ -138,7 +142,7 @@ namespace AwsDedupSync
                             try
                             {
                                 // ReSharper disable once AccessToDisposedClosure
-                                await UploadBlobAsync(s3Manager, blob, CancellationToken.None).ConfigureAwait(false);
+                                await UploadBlobAsync(s3Manager, blob, cancellationToken).ConfigureAwait(false);
 
                                 return;
                             }
@@ -147,7 +151,7 @@ namespace AwsDedupSync
                                 Console.WriteLine("Upload of {0} failed (retrying): {1}", blob.FullPath, ex.Message);
                             }
 
-                            await uniqueFingerprints.SendAsync(blob).ConfigureAwait(false);
+                            await uniqueFingerprints.SendAsync(blob, cancellationToken).ConfigureAwait(false);
                         }, new ExecutionDataflowBlockOptions
                         {
                             MaxDegreeOfParallelism = 12
@@ -165,7 +169,9 @@ namespace AwsDedupSync
                         return blob;
                     });
 
-                    uploaderCounter.Completion.ContinueWith(t => Trace.WriteLine(string.Format("Uploader done queueing {0} items {1:F2}GiB", blobCount, blobTotalSize * (1.0 / (1024 * 1024 * 1024)))));
+                    var task = uploaderCounter.Completion.ContinueWith(t => Trace.WriteLine(string.Format("Uploader done queueing {0} items {1:F2}GiB", blobCount, blobTotalSize * (1.0 / (1024 * 1024 * 1024)))), cancellationToken);
+
+                    tasks.Add(task);
 
                     uploaderCounter.LinkTo(uploader, DataflowLinkOptionsPropagateEnabled);
 
@@ -182,24 +188,26 @@ namespace AwsDedupSync
                     uniqueFingerprints.LinkTo(DataflowBlock.NullTarget<IBlob>());
 
 #if DEBUG
-                    uploader.Completion.ContinueWith(t => Debug.WriteLine("Done uploading blobs"));
+                    var uploadDoneTask = uploader.Completion.ContinueWith(t => Debug.WriteLine("Done uploading blobs"), cancellationToken);
+
+                    tasks.Add(uploadDoneTask);
 #endif
 
                     tasks.Add(uploader.Completion);
                 }
 
-                return Task.WhenAll(tasks);
+                await Task.WhenAll(tasks).ConfigureAwait(false);
             }
         }
 
-        static async Task CreateLinksAsync(S3Manager s3Manager, ILookup<string, string> linkPaths, BufferBlock<IBlob> allBlobs)
+        static async Task CreateLinksAsync(S3Manager s3Manager, ILookup<string, string> linkPaths, BufferBlock<IBlob> allBlobs, CancellationToken cancellationToken)
         {
             // ReSharper disable once AccessToDisposedClosure
             var pathTasks = linkPaths.Select(
                 namePath => new
                 {
                     NamePath = namePath,
-                    TreeTask = s3Manager.ListTreeAsync(namePath.Key, CancellationToken.None)
+                    TreeTask = s3Manager.ListTreeAsync(namePath.Key, cancellationToken)
                 }).ToArray();
 
             await Task.WhenAll(pathTasks.Select(pt => pt.TreeTask)).ConfigureAwait(false);
@@ -220,7 +228,7 @@ namespace AwsDedupSync
                         foreach (var linkTree in linkTrees)
                         {
                             tasks.AddRange(linkTree.NamePath
-                                .Select(path => CreateLinkAsync(s3Manager, linkTree.NamePath.Key, path, blob, linkTree.Tree))
+                                .Select(path => CreateLinkAsync(s3Manager, linkTree.NamePath.Key, path, blob, linkTree.Tree, cancellationToken))
                                 .Where(task => null != task));
                         }
 
@@ -240,24 +248,24 @@ namespace AwsDedupSync
             await linkDispatcher.Completion.ConfigureAwait(false);
         }
 
-        static async Task BuildTreeAsync(S3Manager s3Manager, string name, string path, ILookup<IBlobFingerprint, IBlob> uniqueBlobs)
+        static async Task BuildTreeAsync(S3Manager s3Manager, string name, string path, ILookup<IBlobFingerprint, IBlob> uniqueBlobs, CancellationToken cancellationToken)
         {
             if (!path.EndsWith("/", StringComparison.OrdinalIgnoreCase) && !path.EndsWith("\\", StringComparison.OrdinalIgnoreCase))
                 path += "\\";
 
-            var tree = await s3Manager.ListTreeAsync(name, CancellationToken.None).ConfigureAwait(false);
+            var tree = await s3Manager.ListTreeAsync(name, cancellationToken).ConfigureAwait(false);
 
             var tasks = uniqueBlobs
                 .AsParallel()
                 .SelectMany(b => b)
-                .Select(blob => CreateLinkAsync(s3Manager, name, path, blob, tree))
+                .Select(blob => CreateLinkAsync(s3Manager, name, path, blob, tree, cancellationToken))
                 .Where(t => null != t)
                 .ToArray();
 
             await Task.WhenAll(tasks).ConfigureAwait(false);
         }
 
-        static Task CreateLinkAsync(S3Manager s3Manager, string name, string path, IBlob blob, IReadOnlyDictionary<string, string> tree)
+        static Task CreateLinkAsync(S3Manager s3Manager, string name, string path, IBlob blob, IReadOnlyDictionary<string, string> tree, CancellationToken cancellationToken)
         {
             var relativePath = PathUtil.MakeRelativePath(path, blob.FullPath);
 
@@ -283,7 +291,7 @@ namespace AwsDedupSync
             if (!ActuallyWrite)
                 return null;
 
-            return s3Manager.CreateLinkAsync(name, relativePath, blob, CancellationToken.None);
+            return s3Manager.CreateLinkAsync(name, relativePath, blob, cancellationToken);
         }
 
         static Task UploadBlobAsync(S3Manager s3Manager, IBlob blob, CancellationToken cancellationToken)
@@ -296,7 +304,7 @@ namespace AwsDedupSync
             return s3Manager.StoreAsync(blob, cancellationToken);
         }
 
-        static Task UploadBlobsAsync(S3Manager s3Manager, ILookup<IBlobFingerprint, IBlob> uniqueBlobs, IReadOnlyDictionary<string, long> knowObjects)
+        static Task UploadBlobsAsync(S3Manager s3Manager, ILookup<IBlobFingerprint, IBlob> uniqueBlobs, IReadOnlyDictionary<string, long> knowObjects, CancellationToken cancellationToken)
         {
             var queue = new ConcurrentBag<IBlob>(uniqueBlobs
                 .Where(blob => !knowObjects.ContainsKey(HttpServerUtility.UrlTokenEncode(blob.Key.Sha3_512)))
@@ -315,7 +323,7 @@ namespace AwsDedupSync
 
                         try
                         {
-                            await UploadBlobAsync(s3Manager, blob, CancellationToken.None).ConfigureAwait(false);
+                            await UploadBlobAsync(s3Manager, blob, cancellationToken).ConfigureAwait(false);
                         }
                         catch (Exception ex)
                         {
