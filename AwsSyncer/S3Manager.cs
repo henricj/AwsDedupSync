@@ -1,4 +1,24 @@
-﻿using System;
+﻿// Copyright (c) 2014 Henric Jungheim <software@henric.org>
+// 
+// Permission is hereby granted, free of charge, to any person obtaining a
+// copy of this software and associated documentation files (the "Software"),
+// to deal in the Software without restriction, including without limitation
+// the rights to use, copy, modify, merge, publish, distribute, sublicense,
+// and/or sell copies of the Software, and to permit persons to whom the
+// Software is furnished to do so, subject to the following conditions:
+// 
+// The above copyright notice and this permission notice shall be included in
+// all copies or substantial portions of the Software.
+// 
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
+// THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+// FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+// DEALINGS IN THE SOFTWARE.
+
+using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Diagnostics;
@@ -55,11 +75,11 @@ namespace AwsSyncer
             var keys = new Dictionary<string, long>();
 
             var request = new ListObjectsRequest
-                          {
-                              BucketName = _bucket,
-                              Prefix = "b/",
-                              Delimiter = "/"
-                          };
+            {
+                BucketName = _bucket,
+                Prefix = "b/",
+                Delimiter = "/"
+            };
 
             for (; ; )
             {
@@ -101,20 +121,20 @@ namespace AwsSyncer
                 var md5Digest = Convert.ToBase64String(fingerprint.Md5);
 
                 var request = new PutObjectRequest
-                              {
-                                  BucketName = _bucket,
-                                  InputStream = s,
-                                  Key = "b/" + HttpServerUtility.UrlTokenEncode(fingerprint.Sha3_512),
-                                  MD5Digest = md5Digest,
-                                  Headers =
-                                  {
-                                      ContentType = MimeDetector.Default.GetMimeType(blob.FullPath),
-                                      ContentLength = fingerprint.Size,
-                                      ContentMD5 = md5Digest
-                                  },
-                                  AutoCloseStream = false,
-                                  AutoResetStreamPosition = false
-                              };
+                {
+                    BucketName = _bucket,
+                    InputStream = s,
+                    Key = "b/" + HttpServerUtility.UrlTokenEncode(fingerprint.Sha3_512),
+                    MD5Digest = md5Digest,
+                    Headers =
+                    {
+                        ContentType = MimeDetector.Default.GetMimeType(blob.FullPath),
+                        ContentLength = fingerprint.Size,
+                        ContentMD5 = md5Digest
+                    },
+                    AutoCloseStream = false,
+                    AutoResetStreamPosition = false
+                };
 
                 request.Headers["x-amz-meta-SHA2-256"] = Convert.ToBase64String(fingerprint.Sha2_256);
                 request.Headers["x-amz-meta-SHA3-512"] = Convert.ToBase64String(fingerprint.Sha3_512);
@@ -141,10 +161,10 @@ namespace AwsSyncer
             var files = new Dictionary<string, string>();
 
             var request = new ListObjectsRequest
-                          {
-                              BucketName = _bucket,
-                              Prefix = "t/" + name + "/"
-                          };
+            {
+                BucketName = _bucket,
+                Prefix = "t/" + name + "/"
+            };
 
             for (; ; )
             {
@@ -181,14 +201,14 @@ namespace AwsSyncer
             }
 
             var request = new PutObjectRequest
-                          {
-                              BucketName = _bucket,
-                              ContentBody = link,
-                              Key = treeKey + path,
-                              MD5Digest = md5Digest,
-                              WebsiteRedirectLocation = link,
-                              ContentType = MimeDetector.Default.GetMimeType(blob.FullPath)
-                          };
+            {
+                BucketName = _bucket,
+                ContentBody = link,
+                Key = treeKey + path,
+                MD5Digest = md5Digest,
+                WebsiteRedirectLocation = link,
+                ContentType = MimeDetector.Default.GetMimeType(blob.FullPath)
+            };
 
             var response = await _amazon.PutObjectAsync(request, cancellationToken).ConfigureAwait(false);
         }
