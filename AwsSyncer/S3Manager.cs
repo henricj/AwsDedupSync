@@ -40,21 +40,17 @@ namespace AwsSyncer
         const double ToGiB = 1.0 / (1024 * 1024 * 1024);
         readonly IAmazonS3 _amazon;
         readonly string _bucket;
-        IReadOnlyDictionary<string, long> _keys;
 
         public S3Manager(string bucket)
         {
             if (bucket == null)
-                throw new ArgumentNullException("bucket");
+                throw new ArgumentNullException(nameof(bucket));
 
             _bucket = bucket;
             _amazon = new AmazonS3Client();
         }
 
-        public IReadOnlyDictionary<string, long> Keys
-        {
-            get { return _keys; }
-        }
+        public IReadOnlyDictionary<string, long> Keys { get; private set; }
 
         #region IDisposable Members
 
@@ -81,7 +77,7 @@ namespace AwsSyncer
                 Delimiter = "/"
             };
 
-            for (; ; )
+            for (;;)
             {
                 var response = await _amazon.ListObjectsAsync(request, cancellationToken).ConfigureAwait(false);
 
@@ -94,9 +90,9 @@ namespace AwsSyncer
 
                 if (!response.IsTruncated)
                 {
-                    _keys = keys;
+                    Keys = keys;
 
-                    Trace.WriteLine(string.Format("Bucket b/ contains {0} items {1:F2}GiB", _keys.Count, BytesToGiB(_keys.Values.Sum())));
+                    Trace.WriteLine($"Bucket b/ contains {Keys.Count} items {BytesToGiB(Keys.Values.Sum()):F2}GiB");
 
                     return;
                 }
@@ -109,7 +105,8 @@ namespace AwsSyncer
         {
             Debug.WriteLine("S3Manager.StoreaAsync " + blob.FullPath);
 
-            using (var s = new FileStream(blob.FullPath, FileMode.Open, FileSystemRights.Read, FileShare.Read, 8192, FileOptions.Asynchronous | FileOptions.SequentialScan))
+            using (var s = new FileStream(blob.FullPath, FileMode.Open, FileSystemRights.Read, FileShare.Read, 8192,
+                FileOptions.Asynchronous | FileOptions.SequentialScan))
             {
                 var fi = new FileInfo(blob.FullPath);
 
@@ -166,7 +163,7 @@ namespace AwsSyncer
                 Prefix = "t/" + name + "/"
             };
 
-            for (; ; )
+            for (;;)
             {
                 var response = await _amazon.ListObjectsAsync(request, cancellationToken).ConfigureAwait(false);
 
@@ -179,7 +176,7 @@ namespace AwsSyncer
 
                 if (!response.IsTruncated)
                 {
-                    Trace.WriteLine(string.Format("Links {0} in tree {1}", files.Count, name));
+                    Trace.WriteLine($"Links {files.Count} in tree {name}");
 
                     return new ReadOnlyDictionary<string, string>(files);
                 }
