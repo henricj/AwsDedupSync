@@ -38,9 +38,9 @@ namespace AwsSyncer
         public static String MakeRelativePath(String fromPath, String toPath)
         {
             if (string.IsNullOrWhiteSpace(fromPath))
-                throw new ArgumentNullException("fromPath");
+                throw new ArgumentNullException(nameof(fromPath));
             if (string.IsNullOrWhiteSpace(toPath))
-                throw new ArgumentNullException("toPath");
+                throw new ArgumentNullException(nameof(toPath));
 
             var fromUri = new Uri(fromPath);
             var toUri = new Uri(toPath);

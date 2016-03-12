@@ -1,4 +1,4 @@
-// Copyright (c) 2014,2016 Henric Jungheim <software@henric.org>
+// Copyright (c) 2014-2016 Henric Jungheim <software@henric.org>
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a
 // copy of this software and associated documentation files (the "Software"),
@@ -33,44 +33,28 @@ namespace AwsSyncer
 
     public class Blob : IBlob
     {
-        readonly IBlobFingerprint _fingerprint;
-        readonly string _fullPath;
-        readonly DateTime _lastModifiedUtc;
-
         public Blob(string fullPath, DateTime lastModifiedUtc, IBlobFingerprint fingerprint)
         {
             if (string.IsNullOrWhiteSpace(fullPath))
-                throw new ArgumentNullException("fullPath");
+                throw new ArgumentNullException(nameof(fullPath));
             if (null == fingerprint)
-                throw new ArgumentNullException("fingerprint");
+                throw new ArgumentNullException(nameof(fingerprint));
             if (string.IsNullOrWhiteSpace(fullPath))
-                throw new ArgumentOutOfRangeException("fullPath");
+                throw new ArgumentOutOfRangeException(nameof(fullPath));
             if (lastModifiedUtc.Kind != DateTimeKind.Utc)
-                throw new ArgumentException("time must be UTC", "lastModifiedUtc");
+                throw new ArgumentException("time must be UTC", nameof(lastModifiedUtc));
 
-            _fullPath = fullPath;
-            _fingerprint = fingerprint;
-            _lastModifiedUtc = lastModifiedUtc;
+            FullPath = fullPath;
+            Fingerprint = fingerprint;
+            LastModifiedUtc = lastModifiedUtc;
             Key = HttpServerUtility.UrlTokenEncode(fingerprint.Sha3_512);
         }
 
         #region IBlob Members
 
-        public string FullPath
-        {
-            get { return _fullPath; }
-        }
-
-        public DateTime LastModifiedUtc
-        {
-            get { return _lastModifiedUtc; }
-        }
-
-        public IBlobFingerprint Fingerprint
-        {
-            get { return _fingerprint; }
-        }
-
+        public string FullPath { get; }
+        public DateTime LastModifiedUtc { get; }
+        public IBlobFingerprint Fingerprint { get; }
         public string Key { get; }
 
         public bool Equals(IBlob other)
@@ -87,6 +71,8 @@ namespace AwsSyncer
 
         #endregion
 
+        #region Object
+
         public override bool Equals(object obj)
         {
             return Equals(obj as IBlob);
@@ -96,5 +82,7 @@ namespace AwsSyncer
         {
             return FullPath.GetHashCode() ^ Fingerprint.GetHashCode();
         }
+
+        #endregion
     }
 }

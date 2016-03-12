@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2014 Henric Jungheim <software@henric.org>
+﻿// Copyright (c) 2014-2016 Henric Jungheim <software@henric.org>
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a
 // copy of this software and associated documentation files (the "Software"),
@@ -604,7 +604,7 @@ namespace AwsSyncer
                 { ".yml", "application/x-yaml" },
                 { ".yaml", "application/x-yaml" },
                 { ".z", "application/x-compress" },
-                { ".zip", "application/x-zip-compressed" },
+                { ".zip", "application/x-zip-compressed" }
             };
 
         public MimeDetector()
@@ -619,14 +619,13 @@ namespace AwsSyncer
             }
         }
 
-        public static MimeDetector Default
-        {
-            get { return DefaultInstance.Value; }
-        }
+        public static MimeDetector Default => DefaultInstance.Value;
 
         void ScanRegistry()
         {
-            foreach (var extension in Registry.ClassesRoot.GetSubKeyNames().Where(sk => !string.IsNullOrWhiteSpace(sk) && sk.StartsWith(".")))
+            foreach (var extension in Registry.ClassesRoot
+                .GetSubKeyNames()
+                .Where(sk => !string.IsNullOrWhiteSpace(sk) && sk.StartsWith(".")))
             {
                 using (var key = Registry.ClassesRoot.OpenSubKey(extension))
                 {

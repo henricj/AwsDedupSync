@@ -1,4 +1,4 @@
-// Copyright (c) 2014 Henric Jungheim <software@henric.org>
+// Copyright (c) 2014-2016 Henric Jungheim <software@henric.org>
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a
 // copy of this software and associated documentation files (the "Software"),
@@ -39,27 +39,9 @@ namespace AwsDedupSync
             PropagateCompletion = true
         };
 
-        bool _actuallyWrite = true;
-        bool _updateLinks = true;
-        bool _uploadBlobs = true;
-
-        public bool ActuallyWrite
-        {
-            get { return _actuallyWrite; }
-            set { _actuallyWrite = value; }
-        }
-
-        public bool UpdateLinks
-        {
-            get { return _updateLinks; }
-            set { _updateLinks = value; }
-        }
-
-        public bool UploadBlobs
-        {
-            get { return _uploadBlobs; }
-            set { _uploadBlobs = value; }
-        }
+        public bool ActuallyWrite { get; set; } = true;
+        public bool UpdateLinks { get; set; } = true;
+        public bool UploadBlobs { get; set; } = true;
 
         static string ForceTrailingSlash(string path)
         {
@@ -97,10 +79,10 @@ namespace AwsDedupSync
                 var blobDispatcher = new ActionBlock<IBlob>(
                     async blob =>
                     {
-                        if (_updateLinks)
+                        if (UpdateLinks)
                             await allBlobs.SendAsync(blob, cancellationToken).ConfigureAwait(false);
 
-                        if (_uploadBlobs)
+                        if (UploadBlobs)
                         {
                             if (fingerprints.TryAdd(blob.Fingerprint, blob))
                             {
@@ -126,7 +108,7 @@ namespace AwsDedupSync
 
                 tasks.Add(loadBlobTask);
 
-                if (_updateLinks)
+                if (UpdateLinks)
                 {
                     var livePaths = namedPaths.Where(p => null != p.Name).Distinct().ToLookup(p => p.Name, p => p.Path);
 
@@ -142,7 +124,7 @@ namespace AwsDedupSync
 
                 var knowObjects = s3Manager.Keys;
 
-                if (_uploadBlobs)
+                if (UploadBlobs)
                 {
                     var uploadBlobsTask = UploadBlobsAsync(s3Manager, uniqueFingerprints, knowObjects, cancellationToken);
 
@@ -199,7 +181,9 @@ namespace AwsDedupSync
                 return blob;
             });
 
-            var counterCompletionTask = uploaderCounter.Completion.ContinueWith(t => Trace.WriteLine(string.Format("Uploader done queueing {0} items {1:F2}GiB", blobCount, blobTotalSize * (1.0 / (1024 * 1024 * 1024)))), cancellationToken);
+            var counterCompletionTask = uploaderCounter.Completion.ContinueWith(t =>
+                Trace.WriteLine($"Uploader done queueing {blobCount} items {blobTotalSize * (1.0 / (1024 * 1024 * 1024)):F2}GiB"),
+                cancellationToken);
 
             tasks.Add(counterCompletionTask);
 
@@ -210,7 +194,7 @@ namespace AwsDedupSync
                 {
                     var exists = knowObjects.ContainsKey(HttpServerUtility.UrlTokenEncode(blob.Fingerprint.Sha3_512));
 
-                    //Trace.WriteLine(string.Format("{0} {1}", blob.FullPath, exists ? "already exists" : "scheduled for upload"));
+                    //Trace.WriteLine($"{blob.FullPath} {(exists ? "already exists" : "scheduled for upload")}");
 
                     return !exists;
                 });
@@ -315,7 +299,7 @@ namespace AwsDedupSync
 
             Console.WriteLine("Link {0} {1} -> {2}", name, relativePath, HttpServerUtility.UrlTokenEncode(blob.Fingerprint.Sha3_512.Take(10).ToArray()));
 
-            if (!_actuallyWrite)
+            if (!ActuallyWrite)
                 return null;
 
             return s3Manager.CreateLinkAsync(name, relativePath, blob, cancellationToken);
@@ -325,7 +309,7 @@ namespace AwsDedupSync
         {
             Console.WriteLine("Upload {0} as {1}", blob.FullPath, HttpServerUtility.UrlTokenEncode(blob.Fingerprint.Sha3_512.Take(10).ToArray()));
 
-            if (!_actuallyWrite)
+            if (!ActuallyWrite)
                 return Task.FromResult(false);
 
             return s3Manager.StoreAsync(blob, cancellationToken);
@@ -342,7 +326,7 @@ namespace AwsDedupSync
             var workerTasks = Enumerable.Range(1, count)
                 .Select(async i =>
                 {
-                    for (; ; )
+                    for (;;)
                     {
                         IBlob blob;
                         if (!queue.TryTake(out blob))

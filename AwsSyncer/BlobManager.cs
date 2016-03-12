@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2014 Henric Jungheim <software@henric.org>
+﻿// Copyright (c) 2014-2016 Henric Jungheim <software@henric.org>
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a
 // copy of this software and associated documentation files (the "Software"),
@@ -48,7 +48,7 @@ namespace AwsSyncer
         public BlobManager(StreamFingerprinter fingerprinter)
         {
             if (null == fingerprinter)
-                throw new ArgumentNullException("fingerprinter");
+                throw new ArgumentNullException(nameof(fingerprinter));
 
             _fingerprinter = fingerprinter;
             _cacheManager = new Task(ManageCache);
@@ -102,7 +102,7 @@ namespace AwsSyncer
             {
                 var blobs = GetBlobs();
 
-                Trace.WriteLine(string.Format("BlobManager writing {0} items to db", blobs.Length));
+                Trace.WriteLine($"BlobManager writing {blobs.Length} items to db");
 
                 try
                 {
@@ -128,7 +128,7 @@ namespace AwsSyncer
                 {
                     if (null != blobs)
                     {
-                        Trace.WriteLine(string.Format("BlobManager returning {0} items to queue", blobs.Length));
+                        Trace.WriteLine($"BlobManager returning {blobs.Length} items to queue");
 
                         foreach (var blob in blobs)
                             _updateKnownBlobs.Enqueue(blob);
@@ -150,7 +150,8 @@ namespace AwsSyncer
 
         static DBreezeEngine CreateEngine()
         {
-            var localApplicationData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData, Environment.SpecialFolderOption.Create);
+            var localApplicationData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData,
+                Environment.SpecialFolderOption.Create);
 
             var path = Path.Combine(localApplicationData, "AwsSyncer", "PathsDBreeze");
 
@@ -385,7 +386,8 @@ namespace AwsSyncer
 
                 IBlobFingerprint fingerprint;
 
-                using (var s = new FileStream(filename, FileMode.Open, FileSystemRights.Read, FileShare.Read, 8192, FileOptions.Asynchronous | FileOptions.SequentialScan))
+                using (var s = new FileStream(filename, FileMode.Open, FileSystemRights.Read, FileShare.Read,
+                    8192, FileOptions.Asynchronous | FileOptions.SequentialScan))
                 {
                     fingerprint = await fp.GetFingerprintAsync(s).ConfigureAwait(false);
                 }

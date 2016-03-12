@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2014 Henric Jungheim <software@henric.org>
+﻿// Copyright (c) 2014-2016 Henric Jungheim <software@henric.org>
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a
 // copy of this software and associated documentation files (the "Software"),
@@ -33,61 +33,41 @@ namespace AwsSyncer
 
     class BlobFingerprint : IBlobFingerprint
     {
-        readonly byte[] _md5;
-        readonly byte[] _sha2_256;
-        readonly byte[] _sha3_512;
-        readonly long _size;
-
         public BlobFingerprint(long size, byte[] sha3_512, byte[] sha2_256, byte[] md5)
         {
             if (size < 0)
-                throw new ArgumentOutOfRangeException("size", size, "size cannot be negative");
+                throw new ArgumentOutOfRangeException(nameof(size), size, "size cannot be negative");
 
             if (null == sha3_512)
-                throw new ArgumentNullException("sha3_512");
+                throw new ArgumentNullException(nameof(sha3_512));
 
             if (sha3_512.Length != 512 / 8)
-                throw new ArgumentException("invalid SHA3-512 length", "sha3_512");
+                throw new ArgumentException("invalid SHA3-512 length", nameof(sha3_512));
 
             if (null == sha2_256)
-                throw new ArgumentNullException("sha2_256");
+                throw new ArgumentNullException(nameof(sha2_256));
 
             if (sha2_256.Length != 256 / 8)
-                throw new ArgumentException("invalid SHA2-256 length", "sha2_256");
+                throw new ArgumentException("invalid SHA2-256 length", nameof(sha2_256));
 
             if (null == md5)
-                throw new ArgumentNullException("md5");
+                throw new ArgumentNullException(nameof(md5));
 
             if (md5.Length != 128 / 8)
-                throw new ArgumentException("invalid MD5 length", "md5");
+                throw new ArgumentException("invalid MD5 length", nameof(md5));
 
-            _size = size;
-            _sha3_512 = sha3_512;
-            _sha2_256 = sha2_256;
-            _md5 = md5;
+            Size = size;
+            Sha3_512 = sha3_512;
+            Sha2_256 = sha2_256;
+            Md5 = md5;
         }
 
         #region IBlobFingerprint Members
 
-        public long Size
-        {
-            get { return _size; }
-        }
-
-        public byte[] Sha3_512
-        {
-            get { return _sha3_512; }
-        }
-
-        public byte[] Sha2_256
-        {
-            get { return _sha2_256; }
-        }
-
-        public byte[] Md5
-        {
-            get { return _md5; }
-        }
+        public long Size { get; }
+        public byte[] Sha3_512 { get; }
+        public byte[] Sha2_256 { get; }
+        public byte[] Md5 { get; }
 
         public bool Equals(IBlobFingerprint other)
         {
@@ -103,7 +83,9 @@ namespace AwsSyncer
                    && Md5.SequenceEqual(other.Md5);
         }
 
-        #endregion
+        #endregion // IBlobFingerprint Members
+
+        #region Object
 
         public override bool Equals(object obj)
         {
@@ -114,5 +96,7 @@ namespace AwsSyncer
         {
             return BitConverter.ToInt32(Sha3_512, 0);
         }
+
+        #endregion // Object
     }
 }
