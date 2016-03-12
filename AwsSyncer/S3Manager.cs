@@ -121,7 +121,7 @@ namespace AwsSyncer
                 {
                     BucketName = _bucket,
                     InputStream = s,
-                    Key = "b/" + HttpServerUtility.UrlTokenEncode(fingerprint.Sha3_512),
+                    Key = "b/" + blob.Key,
                     MD5Digest = md5Digest,
                     Headers =
                     {
@@ -188,7 +188,7 @@ namespace AwsSyncer
         public async Task CreateLinkAsync(string name, string path, IBlob blob, CancellationToken cancellationToken)
         {
             var treeKey = "t/" + name + "/";
-            var link = "/b/" + HttpServerUtility.UrlTokenEncode(blob.Fingerprint.Sha3_512);
+            var link = "/b/" + blob.Key;
 
             string md5Digest;
 

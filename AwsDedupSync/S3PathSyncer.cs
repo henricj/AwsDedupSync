@@ -27,7 +27,6 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Threading.Tasks.Dataflow;
-using System.Web;
 using AwsSyncer;
 
 namespace AwsDedupSync
@@ -192,7 +191,7 @@ namespace AwsDedupSync
             uniqueFingerprints.LinkTo(uploaderCounter, DataflowLinkOptionsPropagateEnabled,
                 blob =>
                 {
-                    var exists = knowObjects.ContainsKey(HttpServerUtility.UrlTokenEncode(blob.Fingerprint.Sha3_512));
+                    var exists = knowObjects.ContainsKey(blob.Key);
 
                     //Trace.WriteLine($"{blob.FullPath} {(exists ? "already exists" : "scheduled for upload")}");
 
@@ -297,7 +296,7 @@ namespace AwsDedupSync
             if (tree.ContainsKey(relativePath))
                 return null;
 
-            Console.WriteLine("Link {0} {1} -> {2}", name, relativePath, HttpServerUtility.UrlTokenEncode(blob.Fingerprint.Sha3_512.Take(10).ToArray()));
+            Console.WriteLine("Link {0} {1} -> {2}", name, relativePath, blob.Key.Substring(12));
 
             if (!ActuallyWrite)
                 return null;
@@ -307,7 +306,7 @@ namespace AwsDedupSync
 
         Task UploadBlobAsync(S3Manager s3Manager, IBlob blob, CancellationToken cancellationToken)
         {
-            Console.WriteLine("Upload {0} as {1}", blob.FullPath, HttpServerUtility.UrlTokenEncode(blob.Fingerprint.Sha3_512.Take(10).ToArray()));
+            Console.WriteLine("Upload {0} as {1}", blob.FullPath, blob.Key.Substring(12));
 
             if (!ActuallyWrite)
                 return Task.FromResult(false);
@@ -318,8 +317,8 @@ namespace AwsDedupSync
         Task UploadBlobsAsync(S3Manager s3Manager, ILookup<IBlobFingerprint, IBlob> uniqueBlobs, IReadOnlyDictionary<string, long> knowObjects, CancellationToken cancellationToken)
         {
             var queue = new ConcurrentBag<IBlob>(uniqueBlobs
-                .Where(blob => !knowObjects.ContainsKey(HttpServerUtility.UrlTokenEncode(blob.Key.Sha3_512)))
-                .Select(blobs => blobs.First()));
+                .Select(blobs => blobs.First())
+                .Where(blob => !knowObjects.ContainsKey(blob.Key)));
 
             var count = Math.Max(Environment.ProcessorCount * 2, 12);
 
