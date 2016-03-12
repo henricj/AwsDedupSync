@@ -1,4 +1,4 @@
-// Copyright (c) 2014 Henric Jungheim <software@henric.org>
+// Copyright (c) 2014,2016 Henric Jungheim <software@henric.org>
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a
 // copy of this software and associated documentation files (the "Software"),
@@ -19,6 +19,7 @@
 // DEALINGS IN THE SOFTWARE.
 
 using System;
+using System.Web;
 
 namespace AwsSyncer
 {
@@ -27,6 +28,7 @@ namespace AwsSyncer
         string FullPath { get; }
         DateTime LastModifiedUtc { get; }
         IBlobFingerprint Fingerprint { get; }
+        string Key { get; }
     }
 
     public class Blob : IBlob
@@ -49,6 +51,7 @@ namespace AwsSyncer
             _fullPath = fullPath;
             _fingerprint = fingerprint;
             _lastModifiedUtc = lastModifiedUtc;
+            Key = HttpServerUtility.UrlTokenEncode(fingerprint.Sha3_512);
         }
 
         #region IBlob Members
@@ -67,6 +70,8 @@ namespace AwsSyncer
         {
             get { return _fingerprint; }
         }
+
+        public string Key { get; }
 
         public bool Equals(IBlob other)
         {
