@@ -89,7 +89,11 @@
     <Compile Include="PathUtil.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="RandomUtil.cs" />
-    <Compile Include="S3Manager.cs" />
+    <Compile Include="S3Blobs.cs" />
+    <Compile Include="S3Links.cs" />
+    <Compile Include="AwsManager.cs" />
+    <Compile Include="AwsManagerFactory.cs" />
+    <Compile Include="SizeConversion.cs" />
     <Compile Include="StreamFingerprinter.cs" />
   </ItemGroup>
   <ItemGroup>

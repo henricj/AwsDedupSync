@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2014 Henric Jungheim <software@henric.org>
+// Copyright (c) 2016 Henric Jungheim <software@henric.org>
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a
 // copy of this software and associated documentation files (the "Software"),
@@ -20,60 +20,42 @@
 
 using System;
 using System.Collections.Generic;
-using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.IO;
-using System.Linq;
+using System.Net;
 using System.Security.AccessControl;
-using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
-using System.Web;
 using Amazon.S3;
 using Amazon.S3.Model;
 
 namespace AwsSyncer
 {
-    public sealed class S3Manager : IDisposable
+    public sealed class S3Blobs
     {
-        const double ToGiB = 1.0 / (1024 * 1024 * 1024);
         readonly IAmazonS3 _amazon;
-        readonly string _bucket;
+        readonly IPathManager _pathManager;
 
-        public S3Manager(string bucket)
+        public S3Blobs(IAmazonS3 amazon, IPathManager pathManager)
         {
-            if (bucket == null)
-                throw new ArgumentNullException(nameof(bucket));
+            if (null == amazon)
+                throw new ArgumentNullException(nameof(amazon));
+            if (null == pathManager)
+                throw new ArgumentNullException(nameof(pathManager));
 
-            _bucket = bucket;
-            _amazon = new AmazonS3Client();
+            _amazon = amazon;
+            _pathManager = pathManager;
         }
 
-        public IReadOnlyDictionary<string, long> Keys { get; private set; }
-
-        #region IDisposable Members
-
-        public void Dispose()
-        {
-            _amazon.Dispose();
-        }
-
-        #endregion
-
-        static double BytesToGiB(long value)
-        {
-            return value * ToGiB;
-        }
-
-        public async Task ScanAsync(CancellationToken cancellationToken)
+        public async Task<IReadOnlyDictionary<string, long>> ListAsync(CancellationToken cancellationToken)
         {
             var keys = new Dictionary<string, long>();
 
             var request = new ListObjectsRequest
             {
-                BucketName = _bucket,
-                Prefix = "b/",
+                BucketName = _pathManager.Bucket,
+                Prefix = _pathManager.BlobPrefix,
                 Delimiter = "/"
             };
 
@@ -83,19 +65,13 @@ namespace AwsSyncer
 
                 foreach (var x in response.S3Objects)
                 {
-                    var key = x.Key.Substring(request.Prefix.Length);
+                    var key = _pathManager.GetKeyFromBlobPath(x.Key);
 
                     keys[key] = x.Size;
                 }
 
                 if (!response.IsTruncated)
-                {
-                    Keys = keys;
-
-                    Trace.WriteLine($"Bucket b/ contains {Keys.Count} items {BytesToGiB(Keys.Values.Sum()):F2}GiB");
-
-                    return;
-                }
+                    return keys;
 
                 request.Marker = response.NextMarker;
             }
@@ -103,7 +79,7 @@ namespace AwsSyncer
 
         public async Task<string> StoreAsync(IBlob blob, CancellationToken cancellationToken)
         {
-            Debug.WriteLine("S3Manager.StoreaAsync " + blob.FullPath);
+            Debug.WriteLine("S3Blobs.StoreAsync " + blob.FullPath);
 
             using (var s = new FileStream(blob.FullPath, FileMode.Open, FileSystemRights.Read, FileShare.Read, 8192,
                 FileOptions.Asynchronous | FileOptions.SequentialScan))
@@ -119,9 +95,9 @@ namespace AwsSyncer
 
                 var request = new PutObjectRequest
                 {
-                    BucketName = _bucket,
+                    BucketName = _pathManager.Bucket,
                     InputStream = s,
-                    Key = "b/" + blob.Key,
+                    Key = _pathManager.GetBlobPath(blob),
                     MD5Digest = md5Digest,
                     Headers =
                     {
@@ -149,65 +125,11 @@ namespace AwsSyncer
 
                 var response = await _amazon.PutObjectAsync(request, cancellationToken).ConfigureAwait(false);
 
+                if (response.HttpStatusCode != HttpStatusCode.OK)
+                    Debug.WriteLine("now what?");
+
                 return request.Key;
             }
-        }
-
-        public async Task<IReadOnlyDictionary<string, string>> ListTreeAsync(string name, CancellationToken cancellationToken)
-        {
-            var files = new Dictionary<string, string>();
-
-            var request = new ListObjectsRequest
-            {
-                BucketName = _bucket,
-                Prefix = "t/" + name + "/"
-            };
-
-            for (;;)
-            {
-                var response = await _amazon.ListObjectsAsync(request, cancellationToken).ConfigureAwait(false);
-
-                foreach (var x in response.S3Objects)
-                {
-                    var key = x.Key.Substring(request.Prefix.Length);
-
-                    files[key] = "TODO";
-                }
-
-                if (!response.IsTruncated)
-                {
-                    Trace.WriteLine($"Links {files.Count} in tree {name}");
-
-                    return new ReadOnlyDictionary<string, string>(files);
-                }
-
-                request.Marker = response.NextMarker;
-            }
-        }
-
-        public async Task CreateLinkAsync(string name, string path, IBlob blob, CancellationToken cancellationToken)
-        {
-            var treeKey = "t/" + name + "/";
-            var link = "/b/" + blob.Key;
-
-            string md5Digest;
-
-            using (var md5 = MD5.Create())
-            {
-                md5Digest = Convert.ToBase64String(md5.ComputeHash(Encoding.ASCII.GetBytes(link)));
-            }
-
-            var request = new PutObjectRequest
-            {
-                BucketName = _bucket,
-                ContentBody = link,
-                Key = treeKey + path,
-                MD5Digest = md5Digest,
-                WebsiteRedirectLocation = link,
-                ContentType = MimeDetector.Default.GetMimeType(blob.FullPath)
-            };
-
-            var response = await _amazon.PutObjectAsync(request, cancellationToken).ConfigureAwait(false);
         }
     }
 }
