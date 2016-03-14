@@ -42,14 +42,6 @@ namespace AwsDedupSync
         public bool UpdateLinks { get; set; } = true;
         public bool UploadBlobs { get; set; } = true;
 
-        static string ForceTrailingSlash(string path)
-        {
-            if (!path.EndsWith("/", StringComparison.OrdinalIgnoreCase) && !path.EndsWith("\\", StringComparison.OrdinalIgnoreCase))
-                return path + "\\";
-
-            return path;
-        }
-
         public async Task SyncPathsAsync(string bucket, IEnumerable<string> paths, CancellationToken cancellationToken)
         {
             // BEWARE:  This could cause trouble if there are
@@ -60,7 +52,7 @@ namespace AwsDedupSync
                               select new
                               {
                                   Name = validSplit ? arg.Substring(0, split) : null,
-                                  Path = ForceTrailingSlash(Path.GetFullPath(validSplit ? arg.Substring(split + 1) : arg))
+                                  Path = PathUtil.ForceTrailingSlash(Path.GetFullPath(validSplit ? arg.Substring(split + 1) : arg))
                               })
                 .Distinct()
                 .ToArray();

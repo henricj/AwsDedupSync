@@ -35,7 +35,6 @@ namespace AwsSyncer
 {
     public sealed class BlobManager : IDisposable
     {
-        readonly ConcurrentDictionary<string, object> _allPaths = new ConcurrentDictionary<string, object>();
         readonly Task _cacheManager;
         readonly CancellationTokenSource _cancellationTokenSource = new CancellationTokenSource();
         readonly StreamFingerprinter _fingerprinter;
@@ -223,34 +222,6 @@ namespace AwsSyncer
             }
         }
 
-        IEnumerable<string> ScanDirectory(string arg)
-        {
-            var attr = File.GetAttributes(arg);
-
-            if (FileAttributes.Directory == (attr & FileAttributes.Directory))
-            {
-                foreach (var path in Directory.EnumerateFiles(arg, "*", SearchOption.AllDirectories))
-                {
-                    if (string.IsNullOrWhiteSpace(path))
-                        continue;
-
-                    if (!_allPaths.TryAdd(path, string.Empty))
-                        continue;
-
-                    yield return path;
-                }
-            }
-            else if (0 == (attr & (FileAttributes.Offline | FileAttributes.ReparsePoint)))
-            {
-                var fileInfo = new FileInfo(arg);
-
-                var path = fileInfo.FullName;
-
-                if (!string.IsNullOrWhiteSpace(path) && _allPaths.TryAdd(path, string.Empty))
-                    yield return path;
-            }
-        }
-
         static string GetHost(string path)
         {
             var uri = new Uri(path, UriKind.RelativeOrAbsolute);
@@ -351,7 +322,7 @@ namespace AwsSyncer
                         .WithDegreeOfParallelism(partitions.Length)
                         .WithExecutionMode(ParallelExecutionMode.ForceParallelism)
                         .SelectMany(p => p)
-                        .SelectMany(ScanDirectory)
+                        .SelectMany(PathUtil.ScanDirectory)
                         .Distinct(StringComparer.InvariantCultureIgnoreCase)
                         .ForAll(f => batcher.Post(f));
                 }

@@ -19,7 +19,9 @@
 // DEALINGS IN THE SOFTWARE.
 
 using System;
+using System.Collections.Generic;
 using System.IO;
+using System.Text;
 
 namespace AwsSyncer
 {
@@ -35,7 +37,7 @@ namespace AwsSyncer
         /// <exception cref="ArgumentNullException"></exception>
         /// <exception cref="UriFormatException"></exception>
         /// <exception cref="InvalidOperationException"></exception>
-        public static String MakeRelativePath(String fromPath, String toPath)
+        public static string MakeRelativePath(string fromPath, string toPath)
         {
             if (string.IsNullOrWhiteSpace(fromPath))
                 throw new ArgumentNullException(nameof(fromPath));
@@ -55,6 +57,66 @@ namespace AwsSyncer
                 relativePath = relativePath.Replace(Path.AltDirectorySeparatorChar, Path.DirectorySeparatorChar);
 
             return relativePath;
+        }
+
+        /// <summary>
+        ///     Remove non-ASCII characters.  Remove leading and trailing white-space.
+        /// </summary>
+        /// <param name="value"></param>
+        /// <returns></returns>
+        public static string NormalizeName(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+                return null;
+
+            // This really isn't enough.  We should be much more restrictive
+            // than simply looking for ASCII.
+            return Encoding.ASCII.GetString(Encoding.ASCII.GetBytes(value.Trim()));
+        }
+
+        /// <summary>
+        ///     Require that the string is normalized.  Throw an exception otherwise.
+        /// </summary>
+        /// <param name="value"></param>
+        public static void RequireNormalizedName(string value)
+        {
+            var normalized = NormalizeName(value);
+
+            if (!string.Equals(normalized, value, StringComparison.Ordinal))
+                throw new ArgumentException("non-normalized string");
+        }
+
+        public static string ForceTrailingSlash(string path)
+        {
+            if (!path.EndsWith("/", StringComparison.OrdinalIgnoreCase) && !path.EndsWith("\\", StringComparison.OrdinalIgnoreCase))
+                return path + "\\";
+
+            return path;
+        }
+
+        public static IEnumerable<string> ScanDirectory(string arg)
+        {
+            var attr = File.GetAttributes(arg);
+
+            if (FileAttributes.Directory == (attr & FileAttributes.Directory))
+            {
+                foreach (var path in Directory.EnumerateFiles(arg, "*", SearchOption.AllDirectories))
+                {
+                    if (string.IsNullOrWhiteSpace(path))
+                        continue;
+
+                    yield return path;
+                }
+            }
+            else if (0 == (attr & (FileAttributes.Offline | FileAttributes.ReparsePoint)))
+            {
+                var fileInfo = new FileInfo(arg);
+
+                var path = fileInfo.FullName;
+
+                if (!string.IsNullOrWhiteSpace(path))
+                    yield return path;
+            }
         }
     }
 }
