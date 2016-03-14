@@ -94,7 +94,7 @@ namespace AwsSyncer
                 Key = treeKey,
                 MD5Digest = md5Digest,
                 WebsiteRedirectLocation = link,
-                ContentType = MimeDetector.Default.GetMimeType(blob.FullPath)
+                ContentType = MimeDetector.Default.GetMimeType(blob.FullFilePath)
             };
 
             var response = await _amazon.PutObjectAsync(request, cancellationToken).ConfigureAwait(false);

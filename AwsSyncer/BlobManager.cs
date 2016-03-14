@@ -113,7 +113,7 @@ namespace AwsSyncer
 
                             var buffer = ms.ToArray();
 
-                            tran.Insert("Path", blob.FullPath, buffer);
+                            tran.Insert("Path", blob.FullFilePath, buffer);
                         }
 
                         tran.Commit();
@@ -142,7 +142,7 @@ namespace AwsSyncer
             while (_updateKnownBlobs.TryDequeue(out blob))
                 list.Add(blob);
 
-            return list.OrderBy(b => b.FullPath).ToArray();
+            return list.OrderBy(b => b.FullFilePath).ToArray();
         }
 
         static DBreezeEngine CreateEngine()

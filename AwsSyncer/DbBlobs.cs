@@ -65,7 +65,7 @@ namespace AwsSyncer
                 { ":sha2", new AttributeValue { B = new MemoryStream(blob.Fingerprint.Sha2_256) } },
                 { ":sha3", new AttributeValue { B = new MemoryStream(blob.Fingerprint.Sha3_512) } },
                 { ":l", new AttributeValue { N = blob.Fingerprint.Size.ToString(CultureInfo.InvariantCulture) } },
-                { ":ct", new AttributeValue { S = MimeDetector.Default.GetMimeType(blob.FullPath) } },
+                { ":ct", new AttributeValue { S = MimeDetector.Default.GetMimeType(blob.FullFilePath) } },
                 { ":url", new AttributeValue { S = _pathManager.GetBlobUrl(blob).ToString() } }
             };
 

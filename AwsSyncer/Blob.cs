@@ -25,7 +25,7 @@ namespace AwsSyncer
 {
     public interface IBlob : IEquatable<IBlob>
     {
-        string FullPath { get; }
+        string FullFilePath { get; }
         DateTime LastModifiedUtc { get; }
         IBlobFingerprint Fingerprint { get; }
         string Key { get; }
@@ -33,18 +33,18 @@ namespace AwsSyncer
 
     public class Blob : IBlob
     {
-        public Blob(string fullPath, DateTime lastModifiedUtc, IBlobFingerprint fingerprint)
+        public Blob(string fullFilePath, DateTime lastModifiedUtc, IBlobFingerprint fingerprint)
         {
-            if (string.IsNullOrWhiteSpace(fullPath))
-                throw new ArgumentNullException(nameof(fullPath));
+            if (string.IsNullOrWhiteSpace(fullFilePath))
+                throw new ArgumentNullException(nameof(fullFilePath));
             if (null == fingerprint)
                 throw new ArgumentNullException(nameof(fingerprint));
-            if (string.IsNullOrWhiteSpace(fullPath))
-                throw new ArgumentOutOfRangeException(nameof(fullPath));
+            if (string.IsNullOrWhiteSpace(fullFilePath))
+                throw new ArgumentOutOfRangeException(nameof(fullFilePath));
             if (lastModifiedUtc.Kind != DateTimeKind.Utc)
                 throw new ArgumentException("time must be UTC", nameof(lastModifiedUtc));
 
-            FullPath = fullPath;
+            FullFilePath = fullFilePath;
             Fingerprint = fingerprint;
             LastModifiedUtc = lastModifiedUtc;
             Key = HttpServerUtility.UrlTokenEncode(fingerprint.Sha3_512);
@@ -52,7 +52,7 @@ namespace AwsSyncer
 
         #region IBlob Members
 
-        public string FullPath { get; }
+        public string FullFilePath { get; }
         public DateTime LastModifiedUtc { get; }
         public IBlobFingerprint Fingerprint { get; }
         public string Key { get; }
@@ -65,7 +65,7 @@ namespace AwsSyncer
             if (ReferenceEquals(null, other))
                 return false;
 
-            return FullPath == other.FullPath
+            return FullFilePath == other.FullFilePath
                    && Fingerprint.Equals(other.Fingerprint);
         }
 
@@ -80,7 +80,7 @@ namespace AwsSyncer
 
         public override int GetHashCode()
         {
-            return FullPath.GetHashCode() ^ Fingerprint.GetHashCode();
+            return FullFilePath.GetHashCode() ^ Fingerprint.GetHashCode();
         }
 
         #endregion

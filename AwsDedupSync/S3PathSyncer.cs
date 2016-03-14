@@ -77,11 +77,12 @@ namespace AwsDedupSync
                         {
                             if (fingerprints.TryAdd(blob.Fingerprint, blob))
                             {
-                                //Trace.WriteLine(string.Format("Queueing {0} for upload", blob.FullPath));
+                                //Trace.WriteLine(string.Format("Queueing {0} for upload", blob.FullFilePath));
                                 await uniqueFingerprints.SendAsync(blob, cancellationToken).ConfigureAwait(false);
                             }
                             //else
-                            //    Trace.WriteLine(string.Format("Skipping {0} for upload", blob.FullPath));
+                            //    Trace.WriteLine(string.Format("Skipping {0} for upload", blob.FullFilePath));
+                        }
                         }
                     });
 
@@ -149,7 +150,7 @@ namespace AwsDedupSync
                     }
                     catch (Exception ex)
                     {
-                        Console.WriteLine("Upload of {0} failed (retrying): {1}", blob.FullPath, ex.Message);
+                        Console.WriteLine("Upload of {0} failed (retrying): {1}", blob.FullFilePath, ex.Message);
                     }
 
                     await uniqueFingerprints.SendAsync(blob, cancellationToken).ConfigureAwait(false);
@@ -183,7 +184,7 @@ namespace AwsDedupSync
                 {
                     var exists = knowObjects.ContainsKey(blob.Key);
 
-                    //Trace.WriteLine($"{blob.FullPath} {(exists ? "already exists" : "scheduled for upload")}");
+                    //Trace.WriteLine($"{blob.FullFilePath} {(exists ? "already exists" : "scheduled for upload")}");
 
                     return !exists;
                 });
@@ -270,12 +271,12 @@ namespace AwsDedupSync
 
         Task CreateLinkAsync(AwsManager awsManager, string name, string path, IBlob blob, IReadOnlyDictionary<string, string> tree, CancellationToken cancellationToken)
         {
-            var relativePath = PathUtil.MakeRelativePath(path, blob.FullPath);
+            var relativePath = PathUtil.MakeRelativePath(path, blob.FullFilePath);
 
             if (relativePath.StartsWith(".."))
                 return null;
 
-            if (relativePath == blob.FullPath)
+            if (relativePath == blob.FullFilePath)
                 return null;
 
             if (relativePath.StartsWith("file:", StringComparison.OrdinalIgnoreCase))
@@ -299,7 +300,7 @@ namespace AwsDedupSync
 
         Task UploadBlobAsync(AwsManager awsManager, IBlob blob, CancellationToken cancellationToken)
         {
-            Console.WriteLine("Upload {0} as {1}", blob.FullPath, blob.Key.Substring(12));
+            Console.WriteLine("Upload {0} as {1}", blob.FullFilePath, blob.Key.Substring(12));
 
             if (!ActuallyWrite)
                 return Task.FromResult(false);
@@ -331,7 +332,7 @@ namespace AwsDedupSync
                         }
                         catch (Exception ex)
                         {
-                            Console.WriteLine("Upload of {0} failed (retrying): {1}", blob.FullPath, ex.Message);
+                            Console.WriteLine("Upload of {0} failed (retrying): {1}", blob.FullFilePath, ex.Message);
                             queue.Add(blob);
                         }
                     }

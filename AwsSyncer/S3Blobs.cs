@@ -79,12 +79,12 @@ namespace AwsSyncer
 
         public async Task<string> StoreAsync(IBlob blob, CancellationToken cancellationToken)
         {
-            Debug.WriteLine("S3Blobs.StoreAsync " + blob.FullPath);
+            Debug.WriteLine("S3Blobs.StoreAsync " + blob.FullFilePath);
 
-            using (var s = new FileStream(blob.FullPath, FileMode.Open, FileSystemRights.Read, FileShare.Read, 8192,
+            using (var s = new FileStream(blob.FullFilePath, FileMode.Open, FileSystemRights.Read, FileShare.Read, 8192,
                 FileOptions.Asynchronous | FileOptions.SequentialScan))
             {
-                var fi = new FileInfo(blob.FullPath);
+                var fi = new FileInfo(blob.FullFilePath);
 
                 var fingerprint = blob.Fingerprint;
 
@@ -101,7 +101,7 @@ namespace AwsSyncer
                     MD5Digest = md5Digest,
                     Headers =
                     {
-                        ContentType = MimeDetector.Default.GetMimeType(blob.FullPath),
+                        ContentType = MimeDetector.Default.GetMimeType(blob.FullFilePath),
                         ContentLength = fingerprint.Size,
                         ContentMD5 = md5Digest
                     },
@@ -112,7 +112,7 @@ namespace AwsSyncer
                 request.Headers["x-amz-meta-SHA2-256"] = Convert.ToBase64String(fingerprint.Sha2_256);
                 request.Headers["x-amz-meta-SHA3-512"] = Convert.ToBase64String(fingerprint.Sha3_512);
 
-                var fileName = Path.GetFileName(blob.FullPath);
+                var fileName = Path.GetFileName(blob.FullFilePath);
 
                 if (null != fileName)
                 {
