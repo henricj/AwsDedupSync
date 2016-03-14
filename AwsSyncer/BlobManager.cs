@@ -299,7 +299,7 @@ namespace AwsSyncer
             }
             catch (Exception ex)
             {
-                Console.WriteLine("DistinctFiles failed: " + ex.Message);
+                Console.WriteLine("GenerateBlobs() failed: " + ex.Message);
             }
         }
 
