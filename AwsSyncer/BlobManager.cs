@@ -25,7 +25,6 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Security.AccessControl;
-using System.Security.Cryptography;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Threading.Tasks.Dataflow;
@@ -39,7 +38,6 @@ namespace AwsSyncer
         readonly CancellationTokenSource _cancellationTokenSource = new CancellationTokenSource();
         readonly StreamFingerprinter _fingerprinter;
         readonly TaskCompletionSource<object> _managerDone = new TaskCompletionSource<object>();
-        readonly Random _random = CreateRandom();
         readonly ConcurrentQueue<IBlob> _updateKnownBlobs = new ConcurrentQueue<IBlob>();
 
         Dictionary<string, IBlob> _knownBlobs;
@@ -229,38 +227,6 @@ namespace AwsSyncer
             return uri.IsAbsoluteUri ? uri.Host : string.Empty;
         }
 
-        /// <summary>
-        ///     Fisher–Yates shuffle
-        /// </summary>
-        /// <typeparam name="T"></typeparam>
-        /// <param name="list"></param>
-        void Shuffle<T>(IList<T> list)
-        {
-            lock (_random)
-            {
-                for (var i = list.Count - 1; i >= 1; --i)
-                {
-                    var j = _random.Next(i + 1);
-
-                    var tmp = list[i];
-                    list[i] = list[j];
-                    list[j] = tmp;
-                }
-            }
-        }
-
-        static Random CreateRandom()
-        {
-            using (var rng = RandomNumberGenerator.Create())
-            {
-                var buffer = new byte[4];
-
-                rng.GetBytes(buffer);
-
-                return new Random(BitConverter.ToInt32(buffer, 0));
-            }
-        }
-
         void GenerateBlobs(string[] args, ITargetBlock<IBlob> blobTargetBlock)
         {
             try
@@ -270,7 +236,7 @@ namespace AwsSyncer
                 var routeBlock = new ActionBlock<string[]>(
                     async filenames =>
                     {
-                        Shuffle(filenames);
+                        RandomUtil.Shuffle(filenames);
 
                         foreach (var filename in filenames)
                         {
