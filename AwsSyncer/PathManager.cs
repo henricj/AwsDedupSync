@@ -85,7 +85,7 @@ namespace AwsSyncer
                 if (string.IsNullOrWhiteSpace(value))
                     throw new ArgumentNullException(nameof(value));
 
-                var normalized = PathUtil.NormalizeName(value);
+                var normalized = PathUtil.NormalizeAsciiName(value);
 
                 if (!string.Equals(normalized, value, StringComparison.Ordinal))
                     throw new ArgumentException("non-normalized string");
@@ -111,7 +111,7 @@ namespace AwsSyncer
 
             var key = blobPath.Substring(BlobPrefix.Length);
 
-            PathUtil.RequireNormalizedName(key);
+            PathUtil.RequireNormalizedAsciiName(key);
 
             return key;
         }
@@ -123,7 +123,7 @@ namespace AwsSyncer
 
         public string GetTreeNamePrefix(string name)
         {
-            PathUtil.RequireNormalizedName(name);
+            PathUtil.RequireNormalizedAsciiName(name);
 
             return TreePrefix + name + '/';
         }
@@ -146,8 +146,6 @@ namespace AwsSyncer
                 throw new ArgumentException("path must start with " + prefix);
 
             var key = treeNamePath.Substring(prefix.Length);
-
-            PathUtil.RequireNormalizedName(key);
 
             return key;
         }

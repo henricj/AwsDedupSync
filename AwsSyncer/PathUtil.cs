@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2014 Henric Jungheim <software@henric.org>
+﻿// Copyright (c) 2014-2016 Henric Jungheim <software@henric.org>
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a
 // copy of this software and associated documentation files (the "Software"),
@@ -64,7 +64,7 @@ namespace AwsSyncer
         /// </summary>
         /// <param name="value"></param>
         /// <returns></returns>
-        public static string NormalizeName(string value)
+        public static string NormalizeAsciiName(string value)
         {
             if (string.IsNullOrWhiteSpace(value))
                 return null;
@@ -78,9 +78,9 @@ namespace AwsSyncer
         ///     Require that the string is normalized.  Throw an exception otherwise.
         /// </summary>
         /// <param name="value"></param>
-        public static void RequireNormalizedName(string value)
+        public static void RequireNormalizedAsciiName(string value)
         {
-            var normalized = NormalizeName(value);
+            var normalized = NormalizeAsciiName(value);
 
             if (!string.Equals(normalized, value, StringComparison.Ordinal))
                 throw new ArgumentException("non-normalized string");
