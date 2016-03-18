@@ -334,7 +334,7 @@ namespace AwsSyncer
 
                 var blob = new Blob(fi.FullName, fi.LastWriteTimeUtc, fingerprint);
 
-                UpdateKnownBlobs(blob);
+                _updateKnownBlobs.Enqueue(blob);
 
                 return blob;
             }
@@ -343,11 +343,6 @@ namespace AwsSyncer
                 Debug.WriteLine("File {0} failed: {1}", filename, ex.Message);
                 return null;
             }
-        }
-
-        void UpdateKnownBlobs(IBlob blob)
-        {
-            _updateKnownBlobs.Enqueue(blob);
         }
     }
 }
