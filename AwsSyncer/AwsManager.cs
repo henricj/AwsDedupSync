@@ -90,9 +90,9 @@ namespace AwsSyncer
             return _s3Links.CreateLinkAsync(name, path, blob, cancellationToken);
         }
 
-        public Task UpdateBlobPaths(IBlob blob, ILookup<string, string> paths)
+        public Task UpdateBlobPaths(IBlob blob, ILookup<string, string> paths, CancellationToken cancellationToken)
         {
-            return _dbBlobs.AddPathAsync(blob, paths);
+            return _dbBlobs.AddPathAsync(blob, paths, cancellationToken);
         }
     }
 }

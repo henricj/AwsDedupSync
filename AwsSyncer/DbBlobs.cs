@@ -26,6 +26,7 @@ using System.IO;
 using System.Linq;
 using System.Net;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 using Amazon.DynamoDBv2;
 using Amazon.DynamoDBv2.Model;
@@ -34,6 +35,7 @@ namespace AwsSyncer
 {
     public class DbBlobs
     {
+        static readonly TimeSpan _rateLimit = TimeSpan.FromSeconds(1.0 / 5);
         readonly IAmazonDynamoDB _amazonDb;
         readonly IPathManager _pathManager;
 
@@ -48,7 +50,7 @@ namespace AwsSyncer
             _pathManager = pathManager;
         }
 
-        public async Task AddPathAsync(IBlob blob, ILookup<string, string> namePaths)
+        public async Task AddPathAsync(IBlob blob, ILookup<string, string> namePaths, CancellationToken cancellationToken)
         {
             var names = new Dictionary<string, string>
             {
@@ -111,7 +113,9 @@ namespace AwsSyncer
                                       + "AND (attribute_not_exists(#url) OR #url = :url) "
             };
 
-            var response = await _amazonDb.UpdateItemAsync(request);
+            await Task.Delay(_rateLimit, cancellationToken).ConfigureAwait(false);
+
+            var response = await _amazonDb.UpdateItemAsync(request, cancellationToken).ConfigureAwait(false);
 
             if (response.HttpStatusCode != HttpStatusCode.OK)
                 Debug.WriteLine("now what?");
