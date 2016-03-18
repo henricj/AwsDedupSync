@@ -125,7 +125,7 @@ namespace AwsDedupSync
             }
         }
 
-        Task UpdateLinksAsync(AwsManager awsManager, ILookup<string, string> livePaths, BufferBlock<IBlob> linkBlobs, CancellationToken cancellationToken)
+        Task UpdateLinksAsync(AwsManager awsManager, ILookup<string, string> livePaths, ISourceBlock<IBlob> linkBlobs, CancellationToken cancellationToken)
         {
             var linksTask = CreateLinksAsync(awsManager, livePaths, linkBlobs, cancellationToken);
 
@@ -202,7 +202,7 @@ namespace AwsDedupSync
             return Task.WhenAll(tasks);
         }
 
-        async Task CreateLinksAsync(AwsManager awsManager, ILookup<string, string> linkPaths, BufferBlock<IBlob> linkBlobs, CancellationToken cancellationToken)
+        async Task CreateLinksAsync(AwsManager awsManager, ILookup<string, string> linkPaths, ISourceBlock<IBlob> linkBlobs, CancellationToken cancellationToken)
         {
             // ReSharper disable once AccessToDisposedClosure
             var pathTasks = linkPaths.Select(
