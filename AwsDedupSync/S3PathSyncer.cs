@@ -220,34 +220,33 @@ namespace AwsDedupSync
                 Tree = pt.LinksTask.Result
             }).ToArray();
 
-            var linkDispatcher = new ActionBlock<IBlob>(
-                async blob =>
+            var broadcastBlock = new BroadcastBlock<IBlob>(b => b);
+
+            var tasks = new List<Task>();
+
+            foreach (var linkTree in linkTrees)
+            {
+                foreach (var path in linkTree.NamePath)
                 {
-                    var tasks = new List<Task>();
+                    var key = linkTree.NamePath.Key;
+                    var localPath = path;
+                    var links = linkTree.Tree;
 
-                    try
-                    {
-                        foreach (var linkTree in linkTrees)
-                        {
-                            tasks.AddRange(linkTree.NamePath
-                                .Select(path => CreateLinkAsync(awsManager, linkTree.NamePath.Key, path, blob, linkTree.Tree, cancellationToken))
-                                .Where(task => null != task));
-                        }
+                    var createLinkBlock = new ActionBlock<IBlob>(
+                        blob => CreateLinkAsync(awsManager, key, localPath, blob, links, cancellationToken));
 
-                        await Task.WhenAll(tasks).ConfigureAwait(false);
-                    }
-                    catch (Exception ex)
-                    {
-                        Console.WriteLine("Link creation failed: " + ex.Message);
-                    }
-                }, new ExecutionDataflowBlockOptions
-                {
-                    MaxDegreeOfParallelism = 12
-                });
+                    var bufferBlock = new BufferBlock<IBlob>();
 
-            linkBlobs.LinkTo(linkDispatcher, DataflowLinkOptionsPropagateEnabled);
+                    bufferBlock.LinkTo(createLinkBlock, DataflowLinkOptionsPropagateEnabled);
+                    broadcastBlock.LinkTo(bufferBlock, DataflowLinkOptionsPropagateEnabled);
 
-            await linkDispatcher.Completion.ConfigureAwait(false);
+                    tasks.Add(createLinkBlock.Completion);
+                }
+            }
+
+            linkBlobs.LinkTo(broadcastBlock, DataflowLinkOptionsPropagateEnabled);
+
+            await Task.WhenAll(tasks).ConfigureAwait(false);
         }
 
 #if false
@@ -274,26 +273,26 @@ namespace AwsDedupSync
             var relativePath = PathUtil.MakeRelativePath(path, blob.FullFilePath);
 
             if (relativePath.StartsWith(".."))
-                return null;
+                return Task.CompletedTask;
 
             if (relativePath == blob.FullFilePath)
-                return null;
+                return Task.CompletedTask;
 
             if (relativePath.StartsWith("file:", StringComparison.OrdinalIgnoreCase))
-                return null;
+                return Task.CompletedTask;
 
             relativePath = relativePath.Replace('\\', '/');
 
             if (relativePath.StartsWith("/", StringComparison.Ordinal))
-                return null;
+                return Task.CompletedTask;
 
             if (tree.Contains(relativePath))
-                return null;
+                return Task.CompletedTask;
 
             Console.WriteLine("Link {0} {1} -> {2}", name, relativePath, blob.Key.Substring(12));
 
             if (!ActuallyWrite)
-                return null;
+                return Task.CompletedTask;
 
             return awsManager.CreateLinkAsync(name, relativePath, blob, cancellationToken);
         }
