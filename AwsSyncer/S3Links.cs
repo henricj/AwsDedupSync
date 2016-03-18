@@ -20,7 +20,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.Net;
 using System.Security.Cryptography;
@@ -43,9 +42,9 @@ namespace AwsSyncer
             _pathManager = pathManager;
         }
 
-        public async Task<IReadOnlyDictionary<string, string>> ListAsync(string name, CancellationToken cancellationToken)
+        public async Task<ICollection<string>> ListAsync(string name, CancellationToken cancellationToken)
         {
-            var files = new Dictionary<string, string>();
+            var files = new HashSet<string>();
 
             var request = new ListObjectsRequest
             {
@@ -61,14 +60,14 @@ namespace AwsSyncer
                 {
                     var key = _pathManager.GetKeyFromTreeNamePath(name, x.Key);
 
-                    files[key] = "TODO";
+                    files.Add(key);
                 }
 
                 if (!response.IsTruncated)
                 {
                     Trace.WriteLine($"Links {files.Count} in tree {name}");
 
-                    return new ReadOnlyDictionary<string, string>(files);
+                    return files;
                 }
 
                 request.Marker = response.NextMarker;

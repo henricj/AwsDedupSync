@@ -209,15 +209,15 @@ namespace AwsDedupSync
                 namePath => new
                 {
                     NamePath = namePath,
-                    TreeTask = awsManager.ListTreeAsync(namePath.Key, cancellationToken)
+                    LinksTask = awsManager.GetLinksAsync(namePath.Key, cancellationToken)
                 }).ToArray();
 
-            await Task.WhenAll(pathTasks.Select(pt => pt.TreeTask)).ConfigureAwait(false);
+            await Task.WhenAll(pathTasks.Select(pt => pt.LinksTask)).ConfigureAwait(false);
 
             var linkTrees = pathTasks.Select(pt => new
             {
                 pt.NamePath,
-                Tree = pt.TreeTask.Result
+                Tree = pt.LinksTask.Result
             }).ToArray();
 
             var linkDispatcher = new ActionBlock<IBlob>(
@@ -256,7 +256,7 @@ namespace AwsDedupSync
             if (!path.EndsWith("/", StringComparison.OrdinalIgnoreCase) && !path.EndsWith("\\", StringComparison.OrdinalIgnoreCase))
                 path += "\\";
 
-            var tree = await awsManager.ListTreeAsync(name, cancellationToken).ConfigureAwait(false);
+            var tree = await awsManager.GetLinksAsync(name, cancellationToken).ConfigureAwait(false);
 
             var tasks = uniqueBlobs
                 .AsParallel()
@@ -269,7 +269,7 @@ namespace AwsDedupSync
 
 #endif
 
-        Task CreateLinkAsync(AwsManager awsManager, string name, string path, IBlob blob, IReadOnlyDictionary<string, string> tree, CancellationToken cancellationToken)
+        Task CreateLinkAsync(AwsManager awsManager, string name, string path, IBlob blob, ICollection<string> tree, CancellationToken cancellationToken)
         {
             var relativePath = PathUtil.MakeRelativePath(path, blob.FullFilePath);
 
@@ -287,7 +287,7 @@ namespace AwsDedupSync
             if (relativePath.StartsWith("/", StringComparison.Ordinal))
                 return null;
 
-            if (tree.ContainsKey(relativePath))
+            if (tree.Contains(relativePath))
                 return null;
 
             Console.WriteLine("Link {0} {1} -> {2}", name, relativePath, blob.Key.Substring(12));

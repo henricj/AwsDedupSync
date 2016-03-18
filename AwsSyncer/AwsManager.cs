@@ -31,12 +31,12 @@ namespace AwsSyncer
 {
     public sealed class AwsManager : IDisposable
     {
-        readonly IAmazonS3 _amazonS3;
         readonly IAmazonDynamoDB _amazonDb;
+        readonly IAmazonS3 _amazonS3;
+        readonly DbBlobs _dbBlobs;
         readonly IPathManager _pathManager;
         readonly S3Blobs _s3Blobs;
         readonly S3Links _s3Links;
-        readonly DbBlobs _dbBlobs;
 
         public AwsManager(IAmazonS3 amazonS3, IAmazonDynamoDB amazonDb, IPathManager pathManager)
         {
@@ -80,7 +80,7 @@ namespace AwsSyncer
             return _s3Blobs.StoreAsync(blob, cancellationToken);
         }
 
-        public Task<IReadOnlyDictionary<string, string>> ListTreeAsync(string name, CancellationToken cancellationToken)
+        public Task<ICollection<string>> GetLinksAsync(string name, CancellationToken cancellationToken)
         {
             return _s3Links.ListAsync(name, cancellationToken);
         }
