@@ -227,7 +227,7 @@ namespace AwsSyncer
             return uri.IsAbsoluteUri ? uri.Host : string.Empty;
         }
 
-        void GenerateBlobs(string[] args, ITargetBlock<IBlob> blobTargetBlock)
+        void GenerateBlobs(string[] paths, ITargetBlock<IBlob> blobTargetBlock)
         {
             try
             {
@@ -282,7 +282,7 @@ namespace AwsSyncer
 
                 try
                 {
-                    var partitions = args.GroupBy(GetHost).ToArray();
+                    var partitions = paths.GroupBy(GetHost).ToArray();
 
                     partitions.AsParallel()
                         .WithDegreeOfParallelism(partitions.Length)
