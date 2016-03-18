@@ -84,6 +84,7 @@
     <Compile Include="BlobInformation.cs" />
     <Compile Include="BlobManager.cs" />
     <Compile Include="DbBlobs.cs" />
+    <Compile Include="HashEqualityComparer.cs" />
     <Compile Include="MimeDetector.cs" />
     <Compile Include="PathManager.cs" />
     <Compile Include="PathUtil.cs" />
