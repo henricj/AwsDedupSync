@@ -180,14 +180,17 @@ namespace AwsSyncer
             return new Blob(path, new DateTime(utcTicks, DateTimeKind.Utc), new BlobFingerprint(size, sha3, sha2, md5));
         }
 
-        public void Load(string[] paths, ITargetBlock<IBlob> blobTargetBlock)
+        public async Task LoadAsync(string[] paths, ITargetBlock<IBlob> blobTargetBlock)
         {
-            _knownBlobs = LoadBlobCache();
+            // WARNING: async over sync
+            _knownBlobs = await Task.Run(() => LoadBlobCache()).ConfigureAwait(false);
+
+            Debug.WriteLine($"Loaded {_knownBlobs.Count} known blobs");
 
             if (_cacheManager.Status == TaskStatus.Created)
                 _cacheManager.Start();
 
-            GenerateBlobs(paths, blobTargetBlock);
+            await GenerateBlobsAsync(paths, blobTargetBlock).ConfigureAwait(false);
         }
 
         static Dictionary<string, IBlob> LoadBlobCache()
@@ -227,7 +230,7 @@ namespace AwsSyncer
             return uri.IsAbsoluteUri ? uri.Host : string.Empty;
         }
 
-        void GenerateBlobs(string[] paths, ITargetBlock<IBlob> blobTargetBlock)
+        async Task GenerateBlobsAsync(string[] paths, ITargetBlock<IBlob> blobTargetBlock)
         {
             try
             {
@@ -260,9 +263,12 @@ namespace AwsSyncer
                                 break;
                             }
 
+                            //Debug.WriteLine($"BlobManager.GenerateBlobsAsync() Sending {filename} for host '{host}'");
+
                             await target.SendAsync(filename).ConfigureAwait(false);
                         }
-                    });
+                    },
+                    new ExecutionDataflowBlockOptions { MaxDegreeOfParallelism = DataflowBlockOptions.Unbounded });
 
                 var batcher = new BatchBlock<string>(1024);
 
@@ -271,40 +277,59 @@ namespace AwsSyncer
                     PropagateCompletion = true
                 });
 
-                routeBlock.Completion.ContinueWith(t =>
-                {
-                    Task.WhenAll(targets.Values.Select(target => target.Completion))
-                        .ContinueWith(_ => blobTargetBlock.Complete());
+                var completeTask = routeBlock.Completion.ContinueWith(
+                    _ =>
+                    {
+                        Task.WhenAll(targets.Values.Select(target => target.Completion))
+                            .ContinueWith(_ => blobTargetBlock.Complete());
 
-                    foreach (var target in targets.Values)
-                        target.Complete();
-                });
+                        foreach (var target in targets.Values)
+                            target.Complete();
+                    });
 
                 try
                 {
-                    var partitions = paths.GroupBy(GetHost).ToArray();
-
-                    partitions.AsParallel()
-                        .WithDegreeOfParallelism(partitions.Length)
-                        .WithExecutionMode(ParallelExecutionMode.ForceParallelism)
-                        .SelectMany(p => p)
-                        .SelectMany(PathUtil.ScanDirectory)
-                        .Distinct(StringComparer.InvariantCultureIgnoreCase)
-                        .ForAll(f => batcher.Post(f));
+                    await PostAllFilePathsAsync(paths, batcher).ConfigureAwait(false);
                 }
                 finally
                 {
                     routeBlock.Complete();
                 }
+
+                await routeBlock.Completion.ConfigureAwait(false);
             }
             catch (Exception ex)
             {
-                Console.WriteLine("GenerateBlobs() failed: " + ex.Message);
+                Console.WriteLine("GenerateBlobsAsync() failed: " + ex.Message);
             }
+        }
+
+        static Task PostAllFilePathsAsync(IEnumerable<string> paths, ITargetBlock<string> filePathTargetBlock)
+        {
+            var partitions = paths
+                .GroupBy(GetHost, StringComparer.InvariantCultureIgnoreCase)
+                .ToArray();
+
+            var scanTasks = partitions
+                .Select(partitionPaths =>
+                    Task.Factory.StartNew(async () =>
+                    {
+                        foreach (var file in partitionPaths.SelectMany(PathUtil.ScanDirectory))
+                        {
+                            await filePathTargetBlock.SendAsync(file).ConfigureAwait(false);
+                        }
+                    },
+                        CancellationToken.None,
+                        TaskCreationOptions.DenyChildAttach | TaskCreationOptions.LongRunning | TaskCreationOptions.RunContinuationsAsynchronously,
+                        TaskScheduler.Default));
+
+            return Task.WhenAll(scanTasks);
         }
 
         async Task<IBlob> ProcessFileAsync(string filename)
         {
+            //Debug.WriteLine($"BlobManager.ProcessFileAsync({filename})");
+
             var fp = _fingerprinter;
 
             try

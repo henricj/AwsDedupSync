@@ -96,7 +96,7 @@ namespace AwsDedupSync
 
                 var distinctPaths = namedPaths.Select(p => p.Path).Distinct(StringComparer.InvariantCultureIgnoreCase).ToArray();
 
-                var loadBlobTask = Task.Run(() => blobManager.Load(distinctPaths, blobDispatcher), cancellationToken);
+                var loadBlobTask = blobManager.LoadAsync(distinctPaths, blobTargetBlock);
 
                 tasks.Add(loadBlobTask);
 
