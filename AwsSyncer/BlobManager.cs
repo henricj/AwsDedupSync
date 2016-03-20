@@ -28,7 +28,6 @@ using System.Security.AccessControl;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Threading.Tasks.Dataflow;
-using DBreeze;
 
 namespace AwsSyncer
 {
@@ -93,44 +92,22 @@ namespace AwsSyncer
 
         void UpdateBlobs()
         {
-            using (var ms = new MemoryStream())
-            using (var writer = new BinaryWriter(ms))
-            using (var dbe = CreateEngine())
+            var blobs = GetBlobs();
+
+            Trace.WriteLine($"BlobManager writing {blobs.Length} items to db");
+
+            try
             {
-                var blobs = GetBlobs();
+                DBreezePathStore.StoreBlobs(blobs);
+            }
+            catch
+            {
+                Trace.WriteLine($"BlobManager returning {blobs.Length} items to queue");
 
-                Trace.WriteLine($"BlobManager writing {blobs.Length} items to db");
+                foreach (var blob in blobs)
+                    _updateKnownBlobs.Enqueue(blob);
 
-                try
-                {
-                    using (var tran = dbe.GetTransaction())
-                    {
-                        foreach (var blob in blobs)
-                        {
-                            ms.SetLength(0);
-
-                            WriteBlob(writer, blob);
-
-                            var buffer = ms.ToArray();
-
-                            tran.Insert("Path", blob.FullFilePath, buffer);
-                        }
-
-                        tran.Commit();
-
-                        blobs = null;
-                    }
-                }
-                finally
-                {
-                    if (null != blobs)
-                    {
-                        Trace.WriteLine($"BlobManager returning {blobs.Length} items to queue");
-
-                        foreach (var blob in blobs)
-                            _updateKnownBlobs.Enqueue(blob);
-                    }
-                }
+                throw;
             }
         }
 
@@ -145,45 +122,10 @@ namespace AwsSyncer
             return list.OrderBy(b => b.FullFilePath).ToArray();
         }
 
-        static DBreezeEngine CreateEngine()
-        {
-            var localApplicationData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData,
-                Environment.SpecialFolderOption.Create);
-
-            var path = Path.Combine(localApplicationData, "AwsSyncer", "PathsDBreeze");
-
-            var di = new DirectoryInfo(path);
-
-            if (!di.Exists)
-                di.Create();
-
-            return new DBreezeEngine(di.FullName);
-        }
-
-        static void WriteBlob(BinaryWriter writer, IBlob blob)
-        {
-            writer.Write(blob.LastModifiedUtc.Ticks);
-            writer.Write(blob.Fingerprint.Size);
-            writer.Write(blob.Fingerprint.Sha3_512);
-            writer.Write(blob.Fingerprint.Sha2_256);
-            writer.Write(blob.Fingerprint.Md5);
-        }
-
-        static IBlob ReadBlob(BinaryReader reader, string path)
-        {
-            var utcTicks = reader.ReadInt64();
-            var size = reader.ReadInt64();
-            var sha3 = reader.ReadBytes(512 / 8);
-            var sha2 = reader.ReadBytes(256 / 8);
-            var md5 = reader.ReadBytes(128 / 8);
-
-            return new Blob(path, new DateTime(utcTicks, DateTimeKind.Utc), new BlobFingerprint(size, sha3, sha2, md5));
-        }
-
-        public async Task LoadAsync(string[] paths, ITargetBlock<IBlob> blobTargetBlock)
+        public async Task LoadAsync(CollectionPath[] paths, ITargetBlock<IBlob> blobTargetBlock)
         {
             // WARNING: async over sync
-            _knownBlobs = await Task.Run(() => LoadBlobCache()).ConfigureAwait(false);
+            _knownBlobs = await Task.Run(DBreezePathStore.LoadBlobsAsync).ConfigureAwait(false);
 
             Debug.WriteLine($"Loaded {_knownBlobs.Count} known blobs");
 
@@ -193,36 +135,6 @@ namespace AwsSyncer
             await GenerateBlobsAsync(paths, blobTargetBlock).ConfigureAwait(false);
         }
 
-        static Dictionary<string, IBlob> LoadBlobCache()
-        {
-            using (var ms = new MemoryStream())
-            using (var br = new BinaryReader(ms))
-            using (var dbe = CreateEngine())
-            using (var tran = dbe.GetTransaction())
-            {
-                var blobs = new Dictionary<string, IBlob>((int)tran.Count("Path"));
-
-                foreach (var row in tran.SelectForward<string, byte[]>("Path"))
-                {
-                    var buffer = row.Value;
-
-                    if (ms.Capacity < buffer.Length)
-                        ms.Capacity = buffer.Length;
-
-                    ms.Position = 0;
-                    ms.SetLength(buffer.Length);
-
-                    Array.Copy(buffer, ms.GetBuffer(), buffer.Length);
-
-                    var blob = ReadBlob(br, row.Key);
-
-                    blobs[row.Key] = blob;
-                }
-
-                return blobs;
-            }
-        }
-
         static string GetHost(string path)
         {
             var uri = new Uri(path, UriKind.RelativeOrAbsolute);
@@ -230,25 +142,25 @@ namespace AwsSyncer
             return uri.IsAbsoluteUri ? uri.Host : string.Empty;
         }
 
-        async Task GenerateBlobsAsync(string[] paths, ITargetBlock<IBlob> blobTargetBlock)
+        async Task GenerateBlobsAsync(CollectionPath[] paths, ITargetBlock<IBlob> blobTargetBlock)
         {
             try
             {
-                var targets = new ConcurrentDictionary<string, TransformBlock<string, IBlob>>(StringComparer.InvariantCultureIgnoreCase);
+                var targets = new ConcurrentDictionary<string, TransformBlock<AnnotatedPath, IBlob>>(StringComparer.InvariantCultureIgnoreCase);
 
-                var routeBlock = new ActionBlock<string[]>(
+                var routeBlock = new ActionBlock<AnnotatedPath[]>(
                     async filenames =>
                     {
                         RandomUtil.Shuffle(filenames);
 
                         foreach (var filename in filenames)
                         {
-                            var host = GetHost(filename);
+                            var host = GetHost(filename.FullPath);
 
-                            TransformBlock<string, IBlob> target;
+                            TransformBlock<AnnotatedPath, IBlob> target;
                             while (!targets.TryGetValue(host, out target))
                             {
-                                target = new TransformBlock<string, IBlob>((Func<string, Task<IBlob>>)ProcessFileAsync,
+                                target = new TransformBlock<AnnotatedPath, IBlob>((Func<AnnotatedPath, Task<IBlob>>)ProcessFileAsync,
                                     new ExecutionDataflowBlockOptions
                                     {
                                         MaxDegreeOfParallelism = 5
@@ -270,7 +182,7 @@ namespace AwsSyncer
                     },
                     new ExecutionDataflowBlockOptions { MaxDegreeOfParallelism = DataflowBlockOptions.Unbounded });
 
-                var batcher = new BatchBlock<string>(1024);
+                var batcher = new BatchBlock<AnnotatedPath>(1024);
 
                 batcher.LinkTo(routeBlock, new DataflowLinkOptions
                 {
@@ -281,7 +193,7 @@ namespace AwsSyncer
                     _ =>
                     {
                         Task.WhenAll(targets.Values.Select(target => target.Completion))
-                            .ContinueWith(_ => blobTargetBlock.Complete());
+                            .ContinueWith(__ => blobTargetBlock.Complete());
 
                         foreach (var target in targets.Values)
                             target.Complete();
@@ -304,19 +216,19 @@ namespace AwsSyncer
             }
         }
 
-        static Task PostAllFilePathsAsync(IEnumerable<string> paths, ITargetBlock<string> filePathTargetBlock)
+        static Task PostAllFilePathsAsync(CollectionPath[] paths, ITargetBlock<AnnotatedPath> filePathTargetBlock)
         {
-            var partitions = paths
-                .GroupBy(GetHost, StringComparer.InvariantCultureIgnoreCase)
-                .ToArray();
-
-            var scanTasks = partitions
-                .Select(partitionPaths =>
+            var scanTasks = paths
+                .Select<CollectionPath, Task>(path =>
                     Task.Factory.StartNew(async () =>
                     {
-                        foreach (var file in partitionPaths.SelectMany(PathUtil.ScanDirectory))
+                        foreach (var file in PathUtil.ScanDirectory(path.Path))
                         {
-                            await filePathTargetBlock.SendAsync(file).ConfigureAwait(false);
+                            var relativePath = PathUtil.MakeRelativePath(path.Path, file);
+
+                            var annotatedPath = new AnnotatedPath { FullPath = file, Collection = path.Name ?? path.Path, RelativePath = relativePath };
+
+                            await filePathTargetBlock.SendAsync(annotatedPath).ConfigureAwait(false);
                         }
                     },
                         CancellationToken.None,
@@ -326,7 +238,7 @@ namespace AwsSyncer
             return Task.WhenAll(scanTasks);
         }
 
-        async Task<IBlob> ProcessFileAsync(string filename)
+        async Task<IBlob> ProcessFileAsync(AnnotatedPath filename)
         {
             //Debug.WriteLine($"BlobManager.ProcessFileAsync({filename})");
 
@@ -334,7 +246,7 @@ namespace AwsSyncer
 
             try
             {
-                var fi = new FileInfo(filename);
+                var fi = new FileInfo(filename.FullPath);
 
                 if (!fi.Exists)
                     return null;
@@ -346,9 +258,9 @@ namespace AwsSyncer
                         return knownBlob;
                 }
 
-                IBlobFingerprint fingerprint;
+                BlobFingerprint fingerprint;
 
-                using (var s = new FileStream(filename, FileMode.Open, FileSystemRights.Read, FileShare.Read,
+                using (var s = new FileStream(filename.FullPath, FileMode.Open, FileSystemRights.Read, FileShare.Read,
                     8192, FileOptions.Asynchronous | FileOptions.SequentialScan))
                 {
                     fingerprint = await fp.GetFingerprintAsync(s).ConfigureAwait(false);
@@ -357,7 +269,7 @@ namespace AwsSyncer
                 if (fingerprint.Size != fi.Length)
                     return null;
 
-                var blob = new Blob(fi.FullName, fi.LastWriteTimeUtc, fingerprint);
+                var blob = new Blob(fi.FullName, fi.LastWriteTimeUtc, fingerprint, filename.Collection, filename.RelativePath);
 
                 _updateKnownBlobs.Enqueue(blob);
 
@@ -368,6 +280,13 @@ namespace AwsSyncer
                 Debug.WriteLine("File {0} failed: {1}", filename, ex.Message);
                 return null;
             }
+        }
+
+        class AnnotatedPath
+        {
+            public string FullPath { get; set; }
+            public string Collection { get; set; }
+            public string RelativePath { get; set; }
         }
     }
 }

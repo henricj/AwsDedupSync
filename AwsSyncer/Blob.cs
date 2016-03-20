@@ -26,14 +26,16 @@ namespace AwsSyncer
     public interface IBlob : IEquatable<IBlob>
     {
         string FullFilePath { get; }
+        string Collection { get; }
+        string RelativePath { get; }
         DateTime LastModifiedUtc { get; }
-        IBlobFingerprint Fingerprint { get; }
+        BlobFingerprint Fingerprint { get; }
         string Key { get; }
     }
 
     public class Blob : IBlob
     {
-        public Blob(string fullFilePath, DateTime lastModifiedUtc, IBlobFingerprint fingerprint)
+        public Blob(string fullFilePath, DateTime lastModifiedUtc, BlobFingerprint fingerprint, string collection, string relativePath)
         {
             if (string.IsNullOrWhiteSpace(fullFilePath))
                 throw new ArgumentNullException(nameof(fullFilePath));
@@ -43,9 +45,15 @@ namespace AwsSyncer
                 throw new ArgumentOutOfRangeException(nameof(fullFilePath));
             if (lastModifiedUtc.Kind != DateTimeKind.Utc)
                 throw new ArgumentException("time must be UTC", nameof(lastModifiedUtc));
+            if (string.IsNullOrEmpty(collection))
+                throw new ArgumentException("Argument is null or empty", nameof(collection));
+            if (string.IsNullOrEmpty(relativePath))
+                throw new ArgumentException("Argument is null or empty", nameof(relativePath));
 
             FullFilePath = fullFilePath;
             Fingerprint = fingerprint;
+            Collection = collection;
+            RelativePath = relativePath;
             LastModifiedUtc = lastModifiedUtc;
             Key = HttpServerUtility.UrlTokenEncode(fingerprint.Sha3_512);
         }
@@ -53,8 +61,10 @@ namespace AwsSyncer
         #region IBlob Members
 
         public string FullFilePath { get; }
+        public string Collection { get; }
+        public string RelativePath { get; }
         public DateTime LastModifiedUtc { get; }
-        public IBlobFingerprint Fingerprint { get; }
+        public BlobFingerprint Fingerprint { get; }
         public string Key { get; }
 
         public bool Equals(IBlob other)

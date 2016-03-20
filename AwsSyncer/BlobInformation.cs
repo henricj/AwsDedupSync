@@ -23,15 +23,7 @@ using System.Linq;
 
 namespace AwsSyncer
 {
-    public interface IBlobFingerprint : IEquatable<IBlobFingerprint>
-    {
-        long Size { get; }
-        byte[] Sha3_512 { get; }
-        byte[] Sha2_256 { get; }
-        byte[] Md5 { get; }
-    }
-
-    class BlobFingerprint : IBlobFingerprint
+    public class BlobFingerprint : IEquatable<BlobFingerprint>
     {
         public BlobFingerprint(long size, byte[] sha3_512, byte[] sha2_256, byte[] md5)
         {
@@ -69,7 +61,7 @@ namespace AwsSyncer
         public byte[] Sha2_256 { get; }
         public byte[] Md5 { get; }
 
-        public bool Equals(IBlobFingerprint other)
+        public bool Equals(BlobFingerprint other)
         {
             if (ReferenceEquals(this, other))
                 return true;
@@ -89,7 +81,7 @@ namespace AwsSyncer
 
         public override bool Equals(object obj)
         {
-            return Equals(obj as IBlobFingerprint);
+            return Equals(obj as BlobFingerprint);
         }
 
         public override int GetHashCode()

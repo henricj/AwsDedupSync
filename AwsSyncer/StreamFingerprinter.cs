@@ -27,7 +27,7 @@ namespace AwsSyncer
 {
     public class StreamFingerprinter
     {
-        public async Task<IBlobFingerprint> GetFingerprintAsync(Stream stream)
+        public async Task<BlobFingerprint> GetFingerprintAsync(Stream stream)
         {
             using (var sha3 = new Keccak())
             using (var sha256 = SHA256.Create())
