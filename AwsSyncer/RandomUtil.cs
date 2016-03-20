@@ -29,6 +29,8 @@ namespace AwsSyncer
     {
         static readonly ThreadLocal<Random> LocalRandom = new ThreadLocal<Random>(CreateRandom);
 
+        public static Random ThreadLocalRandom => LocalRandom.Value;
+
         public static Random CreateRandom()
         {
             using (var rng = RandomNumberGenerator.Create())
