@@ -55,6 +55,11 @@ namespace AwsSyncer
             return path;
         }
 
+        static JsonSerializer CreateSerializer()
+        {
+            return new JsonSerializer { DateTimeZoneHandling = DateTimeZoneHandling.Utc };
+        }
+
         public static async Task<Dictionary<string, IBlob>> LoadBlobsAsync(CancellationToken cancellationToken)
         {
             try
@@ -70,6 +75,7 @@ namespace AwsSyncer
             }
 
             cancellationToken.ThrowIfCancellationRequested();
+
             try
             {
                 using (var dbe = CreateEngine())
@@ -117,11 +123,11 @@ namespace AwsSyncer
         static Dictionary<string, IBlob> LoadBlobsImpl(CancellationToken cancellationToken)
         {
             using (var ms = new MemoryStream())
-            using (var br = new BsonReader(ms))
+            using (var br = new BsonReader(ms) { DateTimeKindHandling = DateTimeKind.Utc })
             using (var dbe = CreateEngine())
             using (var tran = dbe.GetTransaction())
             {
-                var serializer = new JsonSerializer();
+                var serializer = CreateSerializer();
 
                 var blobs = new Dictionary<string, IBlob>((int)tran.Count(PathTableName));
 
@@ -162,10 +168,10 @@ namespace AwsSyncer
         public static void StoreBlobs(ICollection<IBlob> blobs, CancellationToken cancellationToken)
         {
             using (var ms = new MemoryStream())
-            using (var writer = new BsonWriter(ms))
+            using (var writer = new BsonWriter(ms) { DateTimeKindHandling = DateTimeKind.Utc })
             using (var dbe = CreateEngine())
             {
-                var serializer = new JsonSerializer();
+                var serializer = CreateSerializer();
 
                 using (var tran = dbe.GetTransaction())
                 {
@@ -173,6 +179,7 @@ namespace AwsSyncer
                     {
                         if (cancellationToken.IsCancellationRequested)
                             break;
+
                         ms.SetLength(0);
 
                         serializer.Serialize(writer, blob);
