@@ -33,7 +33,7 @@ namespace AwsSyncer
     {
         readonly IAmazonDynamoDB _amazonDb;
         readonly IAmazonS3 _amazonS3;
-        readonly DbBlobs _dbBlobs;
+        readonly DynamoDbPathStore _dbBlobs;
         readonly IPathManager _pathManager;
         readonly S3Blobs _s3Blobs;
         readonly S3Links _s3Links;
@@ -53,7 +53,7 @@ namespace AwsSyncer
 
             _s3Blobs = new S3Blobs(amazonS3, pathManager);
             _s3Links = new S3Links(amazonS3, pathManager);
-            _dbBlobs = new DbBlobs(amazonDb, pathManager);
+            _dbBlobs = new DynamoDbPathStore(amazonDb, pathManager);
         }
 
         #region IDisposable Members

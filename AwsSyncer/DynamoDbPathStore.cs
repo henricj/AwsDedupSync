@@ -33,13 +33,13 @@ using Amazon.DynamoDBv2.Model;
 
 namespace AwsSyncer
 {
-    public class DbBlobs
+    public class DynamoDbPathStore
     {
-        static readonly TimeSpan _rateLimit = TimeSpan.FromSeconds(1.0 / 5);
+        static readonly TimeSpan RateLimit = TimeSpan.FromSeconds(1.0 / 5);
         readonly IAmazonDynamoDB _amazonDb;
         readonly IPathManager _pathManager;
 
-        public DbBlobs(IAmazonDynamoDB amazonDb, IPathManager pathManager)
+        public DynamoDbPathStore(IAmazonDynamoDB amazonDb, IPathManager pathManager)
         {
             if (null == amazonDb)
                 throw new ArgumentNullException(nameof(amazonDb));
@@ -50,8 +50,13 @@ namespace AwsSyncer
             _pathManager = pathManager;
         }
 
-        public async Task AddPathAsync(IBlob blob, ILookup<string, string> namePaths, CancellationToken cancellationToken)
+        public async Task AddPathAsync(BlobFingerprint fingerprint, IReadOnlyCollection<IBlob> blobs, CancellationToken cancellationToken)
         {
+            if (blobs.Count < 1)
+                return;
+
+            var firstBlob = blobs.First();
+
             var names = new Dictionary<string, string>
             {
                 { "#l", "Length" },
@@ -63,25 +68,20 @@ namespace AwsSyncer
 
             var values = new Dictionary<string, AttributeValue>
             {
-                { ":md5", new AttributeValue { B = new MemoryStream(blob.Fingerprint.Md5) } },
-                { ":sha2", new AttributeValue { B = new MemoryStream(blob.Fingerprint.Sha2_256) } },
-                { ":sha3", new AttributeValue { B = new MemoryStream(blob.Fingerprint.Sha3_512) } },
-                { ":l", new AttributeValue { N = blob.Fingerprint.Size.ToString(CultureInfo.InvariantCulture) } },
-                { ":ct", new AttributeValue { S = MimeDetector.Default.GetMimeType(blob.FullFilePath) } },
-                { ":url", new AttributeValue { S = _pathManager.GetBlobUrl(blob).ToString() } }
+                { ":md5", new AttributeValue { B = new MemoryStream(fingerprint.Md5) } },
+                { ":sha2", new AttributeValue { B = new MemoryStream(fingerprint.Sha2_256) } },
+                { ":sha3", new AttributeValue { B = new MemoryStream(fingerprint.Sha3_512) } },
+                { ":l", new AttributeValue { N = fingerprint.Size.ToString(CultureInfo.InvariantCulture) } },
+                { ":ct", new AttributeValue { S = MimeDetector.Default.GetMimeType(firstBlob.FullFilePath) } },
+                { ":url", new AttributeValue { S = _pathManager.GetBlobUrl(firstBlob).ToString() } }
             };
 
             var updateExpression = new StringBuilder("SET #sha3 = :sha3, #sha2 = :sha2, MD5 = :md5, #l = :l, #url = :url");
 
             var pathIndex = 0;
-            foreach (var namePath in namePaths)
+            foreach (var namePath in blobs)
             {
-                if (string.IsNullOrEmpty(namePath.Key))
-                    continue;
-
-                var paths = namePath.ToList();
-
-                if (paths.Count < 1)
+                if (string.IsNullOrEmpty(namePath.Collection) || string.IsNullOrEmpty(namePath.RelativePath))
                     continue;
 
                 ++pathIndex;
@@ -89,10 +89,10 @@ namespace AwsSyncer
                 var indexIdentifier = pathIndex.ToString(CultureInfo.InvariantCulture);
 
                 var pathName = "#paths" + indexIdentifier;
-                names[pathName] = '/' + namePath.Key;
+                names[pathName] = '/' + namePath.Collection;
 
                 var valueName = ":p" + indexIdentifier;
-                values[valueName] = new AttributeValue(paths);
+                values[valueName] = new AttributeValue(namePath.RelativePath);
 
                 updateExpression.Append(pathIndex <= 1 ? " ADD " : ", ");
 
@@ -102,7 +102,7 @@ namespace AwsSyncer
             var request = new UpdateItemRequest
             {
                 TableName = "Blobs",
-                Key = new Dictionary<string, AttributeValue> { { "Key", new AttributeValue { S = blob.Key } } },
+                Key = new Dictionary<string, AttributeValue> { { "Key", new AttributeValue { S = firstBlob.Key } } },
                 ExpressionAttributeNames = names,
                 ExpressionAttributeValues = values,
                 UpdateExpression = updateExpression.ToString(),
@@ -113,7 +113,7 @@ namespace AwsSyncer
                                       + "AND (attribute_not_exists(#url) OR #url = :url) "
             };
 
-            await Task.Delay(_rateLimit, cancellationToken).ConfigureAwait(false);
+            await Task.Delay(RateLimit, cancellationToken).ConfigureAwait(false);
 
             var response = await _amazonDb.UpdateItemAsync(request, cancellationToken).ConfigureAwait(false);
 
