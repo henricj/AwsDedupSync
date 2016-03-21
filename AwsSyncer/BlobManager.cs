@@ -41,7 +41,7 @@ namespace AwsSyncer
         readonly ConcurrentDictionary<BlobFingerprint, ConcurrentBag<IBlob>> _knownFingerprints
             = new ConcurrentDictionary<BlobFingerprint, ConcurrentBag<IBlob>>();
 
-        Dictionary<string, IBlob> _knownBlobs;
+        Dictionary<string, IBlob> _previouslyCachedBlobs;
 
         public BlobManager(StreamFingerprinter fingerprinter, CancellationToken cancellationToken)
         {
@@ -132,11 +132,11 @@ namespace AwsSyncer
 
         public async Task LoadAsync(CollectionPath[] paths, ITargetBlock<IBlob> blobTargetBlock)
         {
-            _knownBlobs = await DBreezePathStore.LoadBlobsAsync(_cancellationTokenSource.Token).ConfigureAwait(false);
+            _previouslyCachedBlobs = await DBreezePathStore.LoadBlobsAsync(_cancellationTokenSource.Token).ConfigureAwait(false);
 
-            Debug.WriteLine($"Loaded {_knownBlobs.Count} known blobs");
+            Debug.WriteLine($"Loaded {_previouslyCachedBlobs.Count} known blobs");
 
-            foreach (var blob in _knownBlobs.Values)
+            foreach (var blob in _previouslyCachedBlobs.Values)
                 AddFingerprint(blob);
 
             if (_cacheManager.Status == TaskStatus.Created)
@@ -268,7 +268,7 @@ namespace AwsSyncer
                     return null;
 
                 IBlob knownBlob;
-                if (_knownBlobs.TryGetValue(fi.FullName, out knownBlob))
+                if (_previouslyCachedBlobs.TryGetValue(fi.FullName, out knownBlob))
                 {
                     if (knownBlob.Fingerprint.Size == fi.Length && knownBlob.LastModifiedUtc == fi.LastWriteTimeUtc)
                         return knownBlob;
