@@ -22,6 +22,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Threading;
 using System.Threading.Tasks;
 using DBreeze;
 using Newtonsoft.Json;
@@ -54,11 +55,11 @@ namespace AwsSyncer
             return path;
         }
 
-        public static async Task<Dictionary<string, IBlob>> LoadBlobsAsync()
+        public static async Task<Dictionary<string, IBlob>> LoadBlobsAsync(CancellationToken cancellationToken)
         {
             try
             {
-                var ret = await LoadBlobCacheRetryAsync().ConfigureAwait(false);
+                var ret = await LoadBlobCacheRetryAsync(cancellationToken).ConfigureAwait(false);
 
                 if (null != ret)
                     return ret;
@@ -68,6 +69,7 @@ namespace AwsSyncer
                 // The schema has changed?
             }
 
+            cancellationToken.ThrowIfCancellationRequested();
             try
             {
                 using (var dbe = CreateEngine())
@@ -83,7 +85,7 @@ namespace AwsSyncer
             return new Dictionary<string, IBlob>();
         }
 
-        static async Task<Dictionary<string, IBlob>> LoadBlobCacheRetryAsync()
+        static async Task<Dictionary<string, IBlob>> LoadBlobCacheRetryAsync(CancellationToken cancellationToken)
         {
             var delay = 3.0;
 
@@ -91,7 +93,11 @@ namespace AwsSyncer
             {
                 try
                 {
-                    return LoadBlobsImpl();
+                    return LoadBlobsImpl(cancellationToken);
+                }
+                catch (OperationCanceledException)
+                {
+                    throw;
                 }
                 catch (Exception ex)
                 {
@@ -100,7 +106,7 @@ namespace AwsSyncer
 
                 var rnd = 0.5 * delay * RandomUtil.ThreadLocalRandom.NextDouble();
 
-                await Task.Delay(TimeSpan.FromSeconds(delay + rnd)).ConfigureAwait(false);
+                await Task.Delay(TimeSpan.FromSeconds(delay + rnd), cancellationToken).ConfigureAwait(false);
 
                 delay *= 2;
             }
@@ -108,7 +114,7 @@ namespace AwsSyncer
             return null;
         }
 
-        static Dictionary<string, IBlob> LoadBlobsImpl()
+        static Dictionary<string, IBlob> LoadBlobsImpl(CancellationToken cancellationToken)
         {
             using (var ms = new MemoryStream())
             using (var br = new BsonReader(ms))
@@ -121,6 +127,8 @@ namespace AwsSyncer
 
                 foreach (var row in tran.SelectForward<string, byte[]>(PathTableName))
                 {
+                    cancellationToken.ThrowIfCancellationRequested();
+
                     if (!row.Exists)
                         continue;
 
@@ -151,7 +159,7 @@ namespace AwsSyncer
             }
         }
 
-        public static void StoreBlobs(ICollection<IBlob> blobs)
+        public static void StoreBlobs(ICollection<IBlob> blobs, CancellationToken cancellationToken)
         {
             using (var ms = new MemoryStream())
             using (var writer = new BsonWriter(ms))
@@ -163,6 +171,8 @@ namespace AwsSyncer
                 {
                     foreach (var blob in blobs)
                     {
+                        if (cancellationToken.IsCancellationRequested)
+                            break;
                         ms.SetLength(0);
 
                         serializer.Serialize(writer, blob);
@@ -175,6 +185,8 @@ namespace AwsSyncer
                     tran.Commit();
                 }
             }
+
+            cancellationToken.ThrowIfCancellationRequested();
         }
     }
 }

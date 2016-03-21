@@ -20,6 +20,7 @@
 
 using System.IO;
 using System.Security.Cryptography;
+using System.Threading;
 using System.Threading.Tasks;
 using KeccakOpt;
 
@@ -27,7 +28,7 @@ namespace AwsSyncer
 {
     public class StreamFingerprinter
     {
-        public async Task<BlobFingerprint> GetFingerprintAsync(Stream stream)
+        public async Task<BlobFingerprint> GetFingerprintAsync(Stream stream, CancellationToken cancellationToken)
         {
             using (var sha3 = new Keccak())
             using (var sha256 = SHA256.Create())
@@ -39,7 +40,7 @@ namespace AwsSyncer
 
                 for (; ; )
                 {
-                    var length = await stream.ReadAsync(buffer, 0, buffer.Length).ConfigureAwait(false);
+                    var length = await stream.ReadAsync(buffer, 0, buffer.Length, cancellationToken).ConfigureAwait(false);
 
                     if (length < 1)
                         break;

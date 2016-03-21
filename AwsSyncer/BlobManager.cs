@@ -34,17 +34,19 @@ namespace AwsSyncer
     public sealed class BlobManager : IDisposable
     {
         readonly Task _cacheManager;
-        readonly CancellationTokenSource _cancellationTokenSource = new CancellationTokenSource();
+        readonly CancellationTokenSource _cancellationTokenSource;
         readonly StreamFingerprinter _fingerprinter;
         readonly TaskCompletionSource<object> _managerDone = new TaskCompletionSource<object>();
         readonly ConcurrentQueue<IBlob> _updateKnownBlobs = new ConcurrentQueue<IBlob>();
 
         Dictionary<string, IBlob> _knownBlobs;
 
-        public BlobManager(StreamFingerprinter fingerprinter)
+        public BlobManager(StreamFingerprinter fingerprinter, CancellationToken cancellationToken)
         {
             if (null == fingerprinter)
                 throw new ArgumentNullException(nameof(fingerprinter));
+
+            _cancellationTokenSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
 
             _fingerprinter = fingerprinter;
             _cacheManager = new Task(ManageCache);
@@ -98,7 +100,7 @@ namespace AwsSyncer
 
             try
             {
-                DBreezePathStore.StoreBlobs(blobs);
+                DBreezePathStore.StoreBlobs(blobs, _cancellationTokenSource.Token);
             }
             catch
             {
@@ -119,13 +121,14 @@ namespace AwsSyncer
             while (_updateKnownBlobs.TryDequeue(out blob))
                 list.Add(blob);
 
+            _cancellationTokenSource.Token.ThrowIfCancellationRequested();
+
             return list.OrderBy(b => b.FullFilePath).ToArray();
         }
 
         public async Task LoadAsync(CollectionPath[] paths, ITargetBlock<IBlob> blobTargetBlock)
         {
-            // WARNING: async over sync
-            _knownBlobs = await Task.Run(DBreezePathStore.LoadBlobsAsync).ConfigureAwait(false);
+            _knownBlobs = await DBreezePathStore.LoadBlobsAsync(_cancellationTokenSource.Token).ConfigureAwait(false);
 
             Debug.WriteLine($"Loaded {_knownBlobs.Count} known blobs");
 
@@ -216,7 +219,7 @@ namespace AwsSyncer
             }
         }
 
-        static Task PostAllFilePathsAsync(CollectionPath[] paths, ITargetBlock<AnnotatedPath> filePathTargetBlock)
+        Task PostAllFilePathsAsync(CollectionPath[] paths, ITargetBlock<AnnotatedPath> filePathTargetBlock)
         {
             var scanTasks = paths
                 .Select<CollectionPath, Task>(path =>
@@ -224,6 +227,9 @@ namespace AwsSyncer
                     {
                         foreach (var file in PathUtil.ScanDirectory(path.Path))
                         {
+                            if (_cancellationTokenSource.Token.IsCancellationRequested)
+                                break;
+
                             var relativePath = PathUtil.MakeRelativePath(path.Path, file);
 
                             var annotatedPath = new AnnotatedPath { FullPath = file, Collection = path.Name ?? path.Path, RelativePath = relativePath };
@@ -231,7 +237,7 @@ namespace AwsSyncer
                             await filePathTargetBlock.SendAsync(annotatedPath).ConfigureAwait(false);
                         }
                     },
-                        CancellationToken.None,
+                        _cancellationTokenSource.Token,
                         TaskCreationOptions.DenyChildAttach | TaskCreationOptions.LongRunning | TaskCreationOptions.RunContinuationsAsynchronously,
                         TaskScheduler.Default));
 
@@ -241,6 +247,9 @@ namespace AwsSyncer
         async Task<IBlob> ProcessFileAsync(AnnotatedPath filename)
         {
             //Debug.WriteLine($"BlobManager.ProcessFileAsync({filename})");
+
+            if (_cancellationTokenSource.Token.IsCancellationRequested)
+                return null;
 
             var fp = _fingerprinter;
 
@@ -263,7 +272,7 @@ namespace AwsSyncer
                 using (var s = new FileStream(filename.FullPath, FileMode.Open, FileSystemRights.Read, FileShare.Read,
                     8192, FileOptions.Asynchronous | FileOptions.SequentialScan))
                 {
-                    fingerprint = await fp.GetFingerprintAsync(s).ConfigureAwait(false);
+                    fingerprint = await fp.GetFingerprintAsync(s, _cancellationTokenSource.Token).ConfigureAwait(false);
                 }
 
                 if (fingerprint.Size != fi.Length)
