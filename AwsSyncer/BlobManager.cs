@@ -38,6 +38,8 @@ namespace AwsSyncer
         readonly StreamFingerprinter _fingerprinter;
         readonly TaskCompletionSource<object> _managerDone = new TaskCompletionSource<object>();
         readonly ConcurrentQueue<IBlob> _updateKnownBlobs = new ConcurrentQueue<IBlob>();
+        readonly ConcurrentDictionary<BlobFingerprint, ConcurrentBag<IBlob>> _knownFingerprints
+            = new ConcurrentDictionary<BlobFingerprint, ConcurrentBag<IBlob>>();
 
         Dictionary<string, IBlob> _knownBlobs;
 
@@ -51,6 +53,8 @@ namespace AwsSyncer
             _fingerprinter = fingerprinter;
             _cacheManager = new Task(ManageCache);
         }
+
+        public IReadOnlyDictionary<BlobFingerprint, ConcurrentBag<IBlob>> AllBlobs => _knownFingerprints;
 
         #region IDisposable Members
 
@@ -131,6 +135,9 @@ namespace AwsSyncer
             _knownBlobs = await DBreezePathStore.LoadBlobsAsync(_cancellationTokenSource.Token).ConfigureAwait(false);
 
             Debug.WriteLine($"Loaded {_knownBlobs.Count} known blobs");
+
+            foreach (var blob in _knownBlobs.Values)
+                AddFingerprint(blob);
 
             if (_cacheManager.Status == TaskStatus.Created)
                 _cacheManager.Start();
@@ -280,6 +287,8 @@ namespace AwsSyncer
 
                 var blob = new Blob(fi.FullName, fi.LastWriteTimeUtc, fingerprint, filename.Collection, filename.RelativePath);
 
+                AddFingerprint(blob);
+
                 _updateKnownBlobs.Enqueue(blob);
 
                 return blob;
@@ -289,6 +298,19 @@ namespace AwsSyncer
                 Debug.WriteLine("File {0} failed: {1}", filename, ex.Message);
                 return null;
             }
+        }
+
+        void AddFingerprint(IBlob blob)
+        {
+            ConcurrentBag<IBlob> blobs;
+            while (!_knownFingerprints.TryGetValue(blob.Fingerprint, out blobs))
+            {
+                blobs = new ConcurrentBag<IBlob>();
+                if (_knownFingerprints.TryAdd(blob.Fingerprint, blobs))
+                    break;
+            }
+
+            blobs.Add(blob);
         }
 
         class AnnotatedPath
