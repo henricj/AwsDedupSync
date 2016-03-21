@@ -36,10 +36,12 @@ namespace AwsSyncer
         readonly Task _cacheManager;
         readonly CancellationTokenSource _cancellationTokenSource;
         readonly StreamFingerprinter _fingerprinter;
-        readonly TaskCompletionSource<object> _managerDone = new TaskCompletionSource<object>();
-        readonly ConcurrentQueue<IBlob> _updateKnownBlobs = new ConcurrentQueue<IBlob>();
+
         readonly ConcurrentDictionary<BlobFingerprint, ConcurrentBag<IBlob>> _knownFingerprints
             = new ConcurrentDictionary<BlobFingerprint, ConcurrentBag<IBlob>>();
+
+        readonly TaskCompletionSource<object> _managerDone = new TaskCompletionSource<object>();
+        readonly ConcurrentQueue<IBlob> _updateKnownBlobs = new ConcurrentQueue<IBlob>();
 
         Dictionary<string, IBlob> _previouslyCachedBlobs;
 
