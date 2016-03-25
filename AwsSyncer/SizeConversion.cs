@@ -23,10 +23,16 @@ namespace AwsSyncer
     public static class SizeConversion
     {
         const double ToGiB = 1.0 / (1024 * 1024 * 1024);
+        const double ToMiB = 1.0 / (1024 * 1024);
 
         public static double BytesToGiB(long value)
         {
             return value * ToGiB;
+        }
+
+        public static double BytesToMiB(long value)
+        {
+            return value * ToMiB;
         }
     }
 }
