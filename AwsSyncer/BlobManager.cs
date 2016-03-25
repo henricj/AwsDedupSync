@@ -33,6 +33,9 @@ namespace AwsSyncer
 {
     public sealed class BlobManager : IDisposable
     {
+        const int FlushCount = 5000;
+        static readonly TimeSpan FlushInterval = TimeSpan.FromMinutes(10);
+        readonly BsonFilePathStore _blobPathStore = new BsonFilePathStore();
         readonly Task _cacheManager;
         readonly CancellationTokenSource _cancellationTokenSource;
         readonly StreamFingerprinter _fingerprinter;
@@ -40,10 +43,9 @@ namespace AwsSyncer
         readonly ConcurrentDictionary<BlobFingerprint, ConcurrentBag<IBlob>> _knownFingerprints
             = new ConcurrentDictionary<BlobFingerprint, ConcurrentBag<IBlob>>();
 
-        readonly TaskCompletionSource<object> _managerDone = new TaskCompletionSource<object>();
         readonly ConcurrentQueue<IBlob> _updateKnownBlobs = new ConcurrentQueue<IBlob>();
 
-        Dictionary<string, IBlob> _previouslyCachedBlobs;
+        IReadOnlyDictionary<string, IBlob> _previouslyCachedBlobs;
 
         public BlobManager(StreamFingerprinter fingerprinter, CancellationToken cancellationToken)
         {
@@ -62,10 +64,9 @@ namespace AwsSyncer
 
         public void Dispose()
         {
-            if (!_cancellationTokenSource.IsCancellationRequested)
-                _cancellationTokenSource.Cancel();
+            ShutdownAsync().Wait();
 
-            _managerDone.Task.Wait();
+            _blobPathStore.Dispose();
 
             _cancellationTokenSource.Dispose();
         }
@@ -74,14 +75,56 @@ namespace AwsSyncer
 
         async void ManageCache()
         {
+            var blobUpdateCount = 0;
+            var blobUpdateSize = 0L;
+
             try
             {
+                var rng = RandomUtil.CreateRandom();
+
+                var timeSinceFlush = Stopwatch.StartNew();
+                var countSinceFlush = 0;
+
                 while (!_cancellationTokenSource.Token.IsCancellationRequested)
                 {
-                    await Task.Delay(5000, _cancellationTokenSource.Token).ConfigureAwait(false);
+                    await Task.Delay(7500 + rng.Next(2500), _cancellationTokenSource.Token).ConfigureAwait(false);
 
-                    if (_updateKnownBlobs.Count > 0)
-                        UpdateBlobs();
+                    var count = _updateKnownBlobs.Count;
+
+                    if (count <= 0)
+                        continue;
+
+                    try
+                    {
+                        UpdateBlobs(_blobPathStore);
+
+                        countSinceFlush += count;
+                    }
+                    catch (OperationCanceledException)
+                    { }
+                    catch (Exception ex)
+                    {
+                        Debug.WriteLine("Cache update failed: " + ex.Message);
+                    }
+
+                    if (countSinceFlush > FlushCount || (countSinceFlush > 0 && timeSinceFlush.Elapsed > FlushInterval))
+                    {
+                        try
+                        {
+                            Debug.WriteLine($"Flushing cache to disk after {countSinceFlush} files and {timeSinceFlush.Elapsed}");
+
+                            _blobPathStore.Flush();
+
+                            timeSinceFlush = Stopwatch.StartNew();
+                            countSinceFlush = 0;
+                        }
+                        catch (OperationCanceledException)
+                        { }
+                        catch (Exception ex)
+                        {
+                            Debug.WriteLine("Cache flush to disk failed: " + ex.Message);
+                        }
+                    }
                 }
             }
             catch (OperationCanceledException)
@@ -92,13 +135,14 @@ namespace AwsSyncer
             {
                 Console.WriteLine("BlobManager's cache task failed: " + ex.Message);
             }
-            finally
-            {
-                _managerDone.TrySetResult(string.Empty);
-            }
+
+            blobUpdateCount = _blobPathStore.BlobUpdateCount;
+            blobUpdateSize = _blobPathStore.BlobUpdateSize;
+
+            Console.WriteLine($"Shutting down updates after scanning {blobUpdateCount} files of {SizeConversion.BytesToGiB(blobUpdateSize):F3}GiB");
         }
 
-        void UpdateBlobs()
+        void UpdateBlobs(BsonFilePathStore blobPathStore)
         {
             var blobs = GetBlobs();
 
@@ -106,7 +150,7 @@ namespace AwsSyncer
 
             try
             {
-                DBreezePathStore.StoreBlobs(blobs, _cancellationTokenSource.Token);
+                blobPathStore.StoreBlobs(blobs, _cancellationTokenSource.Token);
             }
             catch
             {
@@ -134,7 +178,7 @@ namespace AwsSyncer
 
         public async Task LoadAsync(CollectionPath[] paths, ITargetBlock<IBlob> blobTargetBlock)
         {
-            _previouslyCachedBlobs = await DBreezePathStore.LoadBlobsAsync(_cancellationTokenSource.Token).ConfigureAwait(false);
+            _previouslyCachedBlobs = await _blobPathStore.LoadBlobsAsync(_cancellationTokenSource.Token).ConfigureAwait(false);
 
             Debug.WriteLine($"Loaded {_previouslyCachedBlobs.Count} known blobs");
 
@@ -145,6 +189,17 @@ namespace AwsSyncer
                 _cacheManager.Start();
 
             await GenerateBlobsAsync(paths, blobTargetBlock).ConfigureAwait(false);
+        }
+
+        public Task ShutdownAsync()
+        {
+            if (!_cancellationTokenSource.IsCancellationRequested)
+                _cancellationTokenSource.Cancel();
+
+            if (_cacheManager.Status == TaskStatus.Created)
+                return Task.CompletedTask;
+
+            return _cacheManager;
         }
 
         static string GetHost(string path)
@@ -160,6 +215,8 @@ namespace AwsSyncer
             {
                 var targets = new ConcurrentDictionary<string, TransformBlock<AnnotatedPath, IBlob>>(StringComparer.InvariantCultureIgnoreCase);
 
+                var cancellationToken = _cancellationTokenSource.Token;
+
                 var routeBlock = new ActionBlock<AnnotatedPath[]>(
                     async filenames =>
                     {
@@ -167,7 +224,19 @@ namespace AwsSyncer
 
                         foreach (var filename in filenames)
                         {
-                            var host = GetHost(filename.FullPath);
+                            if (null == filename)
+                                continue;
+
+                            var cachedBlob = GetCachedBlob(filename.FileInfo);
+
+                            if (null != cachedBlob)
+                            {
+                                await blobTargetBlock.SendAsync(cachedBlob, cancellationToken).ConfigureAwait(false);
+
+                                continue;
+                            }
+
+                            var host = GetHost(filename.FileInfo.FullName);
 
                             TransformBlock<AnnotatedPath, IBlob> target;
                             while (!targets.TryGetValue(host, out target))
@@ -175,11 +244,14 @@ namespace AwsSyncer
                                 target = new TransformBlock<AnnotatedPath, IBlob>((Func<AnnotatedPath, Task<IBlob>>)ProcessFileAsync,
                                     new ExecutionDataflowBlockOptions
                                     {
-                                        MaxDegreeOfParallelism = 5
+                                        MaxDegreeOfParallelism = 5,
+                                        CancellationToken = cancellationToken
                                     });
 
                                 if (!targets.TryAdd(host, target))
                                     continue;
+
+                                Debug.WriteLine($"BlobManager.GenerateBlobsAsync() starting reader for host: '{host}'");
 
                                 target.LinkTo(blobTargetBlock, blob => null != blob);
                                 target.LinkTo(DataflowBlock.NullTarget<IBlob>());
@@ -187,16 +259,33 @@ namespace AwsSyncer
                                 break;
                             }
 
-                            //Debug.WriteLine($"BlobManager.GenerateBlobsAsync() Sending {filename} for host '{host}'");
+                            //Debug.WriteLine($"BlobManager.GenerateBlobsAsync() Sending {annotatedPath} for host '{host}'");
 
-                            await target.SendAsync(filename).ConfigureAwait(false);
+                            await target.SendAsync(filename, cancellationToken).ConfigureAwait(false);
                         }
                     },
-                    new ExecutionDataflowBlockOptions { MaxDegreeOfParallelism = DataflowBlockOptions.Unbounded });
+                    new ExecutionDataflowBlockOptions { MaxDegreeOfParallelism = 16, CancellationToken = cancellationToken });
 
-                var batcher = new BatchBlock<AnnotatedPath>(1024);
+                var distinctPaths = new HashSet<string>(StringComparer.InvariantCultureIgnoreCase);
 
-                batcher.LinkTo(routeBlock, new DataflowLinkOptions
+                var distinctBlock = new TransformBlock<AnnotatedPath[], AnnotatedPath[]>(
+                    annotatedPaths =>
+                    {
+                        for (var i = 0; i < annotatedPaths.Length; ++i)
+                        {
+                            if (!distinctPaths.Add(annotatedPaths[i].FileInfo.FullName))
+                                annotatedPaths[i] = null;
+                        }
+
+                        return annotatedPaths;
+                    },
+                    new ExecutionDataflowBlockOptions { MaxDegreeOfParallelism = 1, CancellationToken = cancellationToken });
+
+                distinctBlock.LinkTo(routeBlock, new DataflowLinkOptions { PropagateCompletion = true });
+
+                var batcher = new BatchBlock<AnnotatedPath>(1024, new GroupingDataflowBlockOptions { CancellationToken = cancellationToken });
+
+                batcher.LinkTo(distinctBlock, new DataflowLinkOptions
                 {
                     PropagateCompletion = true
                 });
@@ -217,7 +306,7 @@ namespace AwsSyncer
                 }
                 finally
                 {
-                    routeBlock.Complete();
+                    batcher.Complete();
                 }
 
                 await routeBlock.Completion.ConfigureAwait(false);
@@ -226,6 +315,26 @@ namespace AwsSyncer
             {
                 Console.WriteLine("GenerateBlobsAsync() failed: " + ex.Message);
             }
+            finally
+            {
+                Debug.WriteLine("BlobManager.GenerateBlobsAsync() is done");
+            }
+        }
+
+        IBlob GetCachedBlob(FileInfo fileInfo)
+        {
+            IBlob blob;
+            if (!_previouslyCachedBlobs.TryGetValue(fileInfo.FullName, out blob))
+                return null;
+
+            if (blob.Fingerprint.Size != fileInfo.Length || blob.LastModifiedUtc != fileInfo.LastWriteTimeUtc)
+            {
+                Debug.WriteLine($"{fileInfo.FullName} changed {blob.Fingerprint.Size} != {fileInfo.Length} || {blob.LastModifiedUtc} != {fileInfo.LastAccessTime} ({blob.LastModifiedUtc != fileInfo.LastWriteTimeUtc})");
+
+                return null;
+            }
+
+            return blob;
         }
 
         Task PostAllFilePathsAsync(CollectionPath[] paths, ITargetBlock<AnnotatedPath> filePathTargetBlock)
@@ -239,9 +348,9 @@ namespace AwsSyncer
                             if (_cancellationTokenSource.Token.IsCancellationRequested)
                                 break;
 
-                            var relativePath = PathUtil.MakeRelativePath(path.Path, file);
+                            var relativePath = PathUtil.MakeRelativePath(path.Path, file.FullName);
 
-                            var annotatedPath = new AnnotatedPath { FullPath = file, Collection = path.Name ?? path.Path, RelativePath = relativePath };
+                            var annotatedPath = new AnnotatedPath { FileInfo = file, Collection = path.Name ?? path.Path, RelativePath = relativePath };
 
                             await filePathTargetBlock.SendAsync(annotatedPath).ConfigureAwait(false);
                         }
@@ -253,9 +362,9 @@ namespace AwsSyncer
             return Task.WhenAll(scanTasks);
         }
 
-        async Task<IBlob> ProcessFileAsync(AnnotatedPath filename)
+        async Task<IBlob> ProcessFileAsync(AnnotatedPath annotatedPath)
         {
-            //Debug.WriteLine($"BlobManager.ProcessFileAsync({filename})");
+            //Debug.WriteLine($"BlobManager.ProcessFileAsync({annotatedPath})");
 
             if (_cancellationTokenSource.Token.IsCancellationRequested)
                 return null;
@@ -264,30 +373,36 @@ namespace AwsSyncer
 
             try
             {
-                var fi = new FileInfo(filename.FullPath);
+                var fileInfo = annotatedPath.FileInfo;
 
-                if (!fi.Exists)
+                fileInfo.Refresh();
+
+                if (!fileInfo.Exists)
                     return null;
 
-                IBlob knownBlob;
-                if (_previouslyCachedBlobs.TryGetValue(fi.FullName, out knownBlob))
-                {
-                    if (knownBlob.Fingerprint.Size == fi.Length && knownBlob.LastModifiedUtc == fi.LastWriteTimeUtc)
-                        return knownBlob;
-                }
+                var knownBlob = GetCachedBlob(fileInfo);
+
+                if (null != knownBlob)
+                    return knownBlob;
 
                 BlobFingerprint fingerprint;
 
-                using (var s = new FileStream(filename.FullPath, FileMode.Open, FileSystemRights.Read, FileShare.Read,
+                var sw = Stopwatch.StartNew();
+
+                using (var s = new FileStream(fileInfo.FullName, FileMode.Open, FileSystemRights.Read, FileShare.Read,
                     8192, FileOptions.Asynchronous | FileOptions.SequentialScan))
                 {
                     fingerprint = await fp.GetFingerprintAsync(s, _cancellationTokenSource.Token).ConfigureAwait(false);
                 }
 
-                if (fingerprint.Size != fi.Length)
+                sw.Stop();
+
+                if (fingerprint.Size != fileInfo.Length)
                     return null;
 
-                var blob = new Blob(fi.FullName, fi.LastWriteTimeUtc, fingerprint, filename.Collection, filename.RelativePath);
+                Debug.WriteLine($"BlobManager.ProcessFileAsync({annotatedPath.FileInfo.FullName}) created {SizeConversion.BytesToMiB(fingerprint.Size):F3}MiB in {sw.Elapsed}");
+
+                var blob = new Blob(fileInfo.FullName, fileInfo.LastWriteTimeUtc, fingerprint, annotatedPath.Collection, annotatedPath.RelativePath);
 
                 AddFingerprint(blob);
 
@@ -297,7 +412,7 @@ namespace AwsSyncer
             }
             catch (Exception ex)
             {
-                Debug.WriteLine("File {0} failed: {1}", filename, ex.Message);
+                Debug.WriteLine("File {0} failed: {1}", annotatedPath.FileInfo.FullName, ex.Message);
                 return null;
             }
         }
@@ -317,7 +432,7 @@ namespace AwsSyncer
 
         class AnnotatedPath
         {
-            public string FullPath { get; set; }
+            public FileInfo FileInfo { get; set; }
             public string Collection { get; set; }
             public string RelativePath { get; set; }
         }

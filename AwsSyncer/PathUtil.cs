@@ -20,6 +20,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Text;
 
@@ -94,29 +95,37 @@ namespace AwsSyncer
             return path;
         }
 
-        public static IEnumerable<string> ScanDirectory(string arg)
+        public static IEnumerable<FileInfo> ScanDirectory(string path)
         {
-            var attr = File.GetAttributes(arg);
+            Debug.WriteLine($"PathUtil.ScanDirectory({path})");
+
+            var timer = Stopwatch.StartNew();
+
+            var attr = File.GetAttributes(path);
 
             if (FileAttributes.Directory == (attr & FileAttributes.Directory))
             {
-                foreach (var path in Directory.EnumerateFiles(arg, "*", SearchOption.AllDirectories))
-                {
-                    if (string.IsNullOrWhiteSpace(path))
-                        continue;
+                var dir = new DirectoryInfo(path);
 
-                    yield return path;
+                if (dir.Exists)
+                {
+                    foreach (var fileInfo in dir.EnumerateFiles("*", SearchOption.AllDirectories))
+                    {
+                        yield return fileInfo;
+                    }
                 }
             }
             else if (0 == (attr & (FileAttributes.Offline | FileAttributes.ReparsePoint)))
             {
-                var fileInfo = new FileInfo(arg);
+                var fileInfo = new FileInfo(path);
 
-                var path = fileInfo.FullName;
-
-                if (!string.IsNullOrWhiteSpace(path))
-                    yield return path;
+                if (fileInfo.Exists)
+                    yield return fileInfo;
             }
+
+            timer.Stop();
+
+            Debug.WriteLine($"PathUtil.ScanDirectory({path}) after {timer.Elapsed}");
         }
     }
 }
