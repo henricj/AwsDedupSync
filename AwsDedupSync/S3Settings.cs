@@ -22,7 +22,7 @@ namespace AwsDedupSync
 {
     public class S3Settings
     {
-        public bool ActuallyWrite { get; set; } = false;
+        public bool ActuallyWrite { get; set; } = true;
         public bool UpdateLinks { get; set; } = true;
         public bool UploadBlobs { get; set; } = true;
         public bool UpdateMeta { get; set; } = false;
