@@ -18,6 +18,7 @@
 // FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
+using System.Collections.Concurrent;
 using System.IO;
 using System.Security.Cryptography;
 using System.Threading;
@@ -28,22 +29,35 @@ namespace AwsSyncer
 {
     public class StreamFingerprinter
     {
+        const int BufferSize = 256 * 1024;
+        readonly ConcurrentStack<byte[]> _buffers = new ConcurrentStack<byte[]>();
+
         public async Task<BlobFingerprint> GetFingerprintAsync(Stream stream, CancellationToken cancellationToken)
         {
             using (var sha3 = new Keccak())
             using (var sha256 = SHA256.Create())
             using (var md5 = MD5.Create())
             {
-                var buffer = new byte[32 * 1024];
+                var buffers = new[] { AllocateBuffer(), AllocateBuffer() };
+                var index = 0;
 
                 var totalLength = 0L;
 
-                for (; ; )
+                var readTask = stream.ReadAsync(buffers[index], 0, buffers[index].Length, cancellationToken);
+
+                for (;;)
                 {
-                    var length = await stream.ReadAsync(buffer, 0, buffer.Length, cancellationToken).ConfigureAwait(false);
+                    var length = await readTask.ConfigureAwait(false);
 
                     if (length < 1)
                         break;
+
+                    var buffer = buffers[index];
+
+                    if (++index >= buffers.Length)
+                        index = 0;
+
+                    readTask = stream.ReadAsync(buffers[index], 0, buffers[index].Length, cancellationToken);
 
                     totalLength += length;
 
@@ -54,16 +68,37 @@ namespace AwsSyncer
                     md5.TransformBlock(buffer, 0, length, null, 0);
                 }
 
-                sha3.TransformFinalBlock(buffer, 0, 0);
+                sha3.TransformFinalBlock(buffers[0], 0, 0);
 
-                sha256.TransformFinalBlock(buffer, 0, 0);
+                sha256.TransformFinalBlock(buffers[0], 0, 0);
 
-                md5.TransformFinalBlock(buffer, 0, 0);
+                md5.TransformFinalBlock(buffers[0], 0, 0);
+
+                foreach (var buffer in buffers)
+                    FreeBuffer(buffer);
 
                 var fingerprint = new BlobFingerprint(totalLength, sha3.Hash, sha256.Hash, md5.Hash);
 
                 return fingerprint;
             }
+        }
+
+        byte[] AllocateBuffer()
+        {
+            byte[] buffer;
+
+            if (!_buffers.TryPop(out buffer))
+                buffer = new byte[BufferSize];
+
+            return buffer;
+        }
+
+        void FreeBuffer(byte[] buffer)
+        {
+            if (BufferSize != buffer.Length)
+                return;
+
+            _buffers.Push(buffer);
         }
     }
 }
