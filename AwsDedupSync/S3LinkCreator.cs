@@ -94,36 +94,43 @@ namespace AwsDedupSync
             await Task.WhenAll(tasks).ConfigureAwait(false);
         }
 
-        Task CreateLinkAsync(AwsManager awsManager, string name, IBlob blob, ICollection<string> tree, CancellationToken cancellationToken)
+        async Task CreateLinkAsync(AwsManager awsManager, string name, IBlob blob, ICollection<string> tree, CancellationToken cancellationToken)
         {
             if (name != blob.Collection)
-                return Task.CompletedTask;
+                return;
 
             var relativePath = blob.RelativePath;
 
             if (relativePath.StartsWith(".."))
-                return Task.CompletedTask;
+                return;
 
             if (relativePath == blob.FullFilePath)
-                return Task.CompletedTask;
+                return;
 
             if (relativePath.StartsWith("file:", StringComparison.OrdinalIgnoreCase))
-                return Task.CompletedTask;
+                return;
 
             relativePath = relativePath.Replace('\\', '/');
 
             if (relativePath.StartsWith("/", StringComparison.Ordinal))
-                return Task.CompletedTask;
+                return;
 
             if (tree.Contains(relativePath))
-                return Task.CompletedTask;
+                return;
 
             Console.WriteLine("Link {0} {1} -> {2}", name, relativePath, blob.Key.Substring(12));
 
             if (!_s3Settings.ActuallyWrite)
-                return Task.CompletedTask;
+                return;
 
-            return awsManager.CreateLinkAsync(name, relativePath, blob, cancellationToken);
+            try
+            {
+                await awsManager.CreateLinkAsync(name, relativePath, blob, cancellationToken).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("Link {0} {1} -> {2} failed: {3}", name, relativePath, blob.Key.Substring(12), ex.Message);
+            }
         }
     }
 }
