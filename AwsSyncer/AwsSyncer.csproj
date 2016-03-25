@@ -92,6 +92,7 @@
     <Compile Include="DBreezePathStore.cs" />
     <Compile Include="HashEqualityComparer.cs" />
     <Compile Include="MimeDetector.cs" />
+    <Compile Include="MsTicksDateTimeJsonConverter.cs" />
     <Compile Include="PathManager.cs" />
     <Compile Include="PathUtil.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
