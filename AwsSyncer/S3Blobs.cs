@@ -67,6 +67,10 @@ namespace AwsSyncer
                 {
                     var key = _pathManager.GetKeyFromBlobPath(x.Key);
 
+                    // Ignore the folder itself (if there is an empty object there).
+                    if (null == key)
+                        continue;
+
                     keys[key] = x.Size;
                 }
 

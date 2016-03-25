@@ -99,7 +99,7 @@ namespace AwsSyncer
 
         public string GetBlobPath(IBlob blob)
         {
-            return BlobPrefix + blob;
+            return BlobPrefix + blob.Key;
         }
 
         public string GetKeyFromBlobPath(string blobPath)
@@ -110,6 +110,9 @@ namespace AwsSyncer
                 throw new ArgumentException("path must start with " + BlobPrefix, nameof(blobPath));
 
             var key = blobPath.Substring(BlobPrefix.Length);
+
+            if (string.IsNullOrEmpty(key))
+                return null;
 
             PathUtil.RequireNormalizedAsciiName(key);
 
@@ -130,7 +133,7 @@ namespace AwsSyncer
 
         public string GetTreeNamePath(string name, string key)
         {
-            return GetTreeNamePrefix(name) + key + '/';
+            return GetTreeNamePrefix(name) + key;
         }
 
         public string GetKeyFromTreeNamePath(string name, string treeNamePath)
