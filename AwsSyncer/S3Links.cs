@@ -73,11 +73,7 @@ namespace AwsSyncer
                 }
 
                 if (!response.IsTruncated)
-                {
-                    Trace.WriteLine($"Links {files.Count} in tree {name}");
-
                     return files;
-                }
 
                 request.Marker = response.NextMarker;
             }
@@ -107,8 +103,7 @@ namespace AwsSyncer
                 Headers =
                 {
                     ["x-amz-meta-lastModified"] = blob.LastModifiedUtc.ToString("O")
-                },
-                
+                }
             };
 
             var response = await _amazon.PutObjectAsync(request, cancellationToken).ConfigureAwait(false);

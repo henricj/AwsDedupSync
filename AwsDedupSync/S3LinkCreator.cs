@@ -38,60 +38,78 @@ namespace AwsDedupSync
             _s3Settings = s3Settings;
         }
 
-        public Task UpdateLinksAsync(AwsManager awsManager, ILookup<string, string> livePaths, ISourceBlock<IBlob> linkBlobs, CancellationToken cancellationToken)
+        public async Task UpdateLinksAsync(AwsManager awsManager, ILookup<string, string> livePaths, ISourceBlock<IBlob> linkBlobs, CancellationToken cancellationToken)
         {
-            var linksTask = CreateLinksAsync(awsManager, livePaths, linkBlobs, cancellationToken);
+            try
+            {
+                await CreateLinksAsync(awsManager, livePaths, linkBlobs, cancellationToken).ConfigureAwait(false);
 
-            var traceTask = linksTask.ContinueWith(t => Trace.WriteLine("Done processing links"), cancellationToken);
-
-            return Task.WhenAll(linksTask, traceTask);
+                Debug.WriteLine("Done processing links");
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine("Processing links failed: " + ex.Message);
+            }
         }
 
         async Task CreateLinksAsync(AwsManager awsManager, ILookup<string, string> linkPaths,
             ISourceBlock<IBlob> blobSourceBlock, CancellationToken cancellationToken)
         {
-            // ReSharper disable once AccessToDisposedClosure
-            var pathTasks = linkPaths.Select(
-                namePath => new
-                {
-                    NamePath = namePath,
-                    LinksTask = awsManager.GetLinksAsync(namePath.Key, cancellationToken)
-                }).ToArray();
-
-            await Task.WhenAll(pathTasks.Select(pt => pt.LinksTask)).ConfigureAwait(false);
-
-            var linkTrees = pathTasks.Select(pt => new
-            {
-                pt.NamePath,
-                Tree = pt.LinksTask.Result
-            }).ToArray();
-
-            var broadcastBlock = new BroadcastBlock<IBlob>(b => b);
-
+            var collectionBlocks = new Dictionary<string, ITargetBlock<IBlob>>();
             var tasks = new List<Task>();
 
-            foreach (var linkTree in linkTrees)
+            var routeBlock = new ActionBlock<IBlob>(async blob =>
             {
-                foreach (var path in linkTree.NamePath)
+                var collection = blob.Collection;
+
+                if (string.IsNullOrEmpty(collection))
+                    return;
+
+                ITargetBlock<IBlob> collectionBlock;
+                if (!collectionBlocks.TryGetValue(collection, out collectionBlock))
                 {
-                    var key = linkTree.NamePath.Key;
-                    var links = linkTree.Tree;
-
-                    var createLinkBlock = new ActionBlock<IBlob>(
-                        blob => CreateLinkAsync(awsManager, key, blob, links, cancellationToken));
-
                     var bufferBlock = new BufferBlock<IBlob>();
 
-                    bufferBlock.LinkTo(createLinkBlock, S3PathSyncer.DataflowLinkOptionsPropagateEnabled);
-                    broadcastBlock.LinkTo(bufferBlock, S3PathSyncer.DataflowLinkOptionsPropagateEnabled);
+                    collectionBlock = bufferBlock;
 
-                    tasks.Add(createLinkBlock.Completion);
+                    collectionBlocks[collection] = collectionBlock;
+
+                    var task = CreateLinksBlockAsync(awsManager, collection, bufferBlock, cancellationToken);
+
+                    tasks.Add(task);
                 }
-            }
 
-            blobSourceBlock.LinkTo(broadcastBlock, S3PathSyncer.DataflowLinkOptionsPropagateEnabled);
+                await collectionBlock.SendAsync(blob, cancellationToken).ConfigureAwait(false);
+            });
+
+            blobSourceBlock.LinkTo(routeBlock, S3PathSyncer.DataflowLinkOptionsPropagateEnabled);
+
+            await routeBlock.Completion.ConfigureAwait(false);
+
+            Debug.WriteLine("S3LinkCreateor.CreateLinkAsync() routeBlock is done");
+
+            foreach (var block in collectionBlocks.Values)
+                block.Complete();
 
             await Task.WhenAll(tasks).ConfigureAwait(false);
+
+            Debug.WriteLine("S3LinkCreateor.CreateLinkAsync() all link blocks are done");
+        }
+
+        async Task CreateLinksBlockAsync(AwsManager awsManager, string collection, ISourceBlock<IBlob> collectionBlock, CancellationToken cancellationToken)
+        {
+            var links = await awsManager.GetLinksAsync(collection, cancellationToken).ConfigureAwait(false);
+
+            Debug.WriteLine($"Link handler for {collection} found {links.Count} existing links");
+
+            var createLinkBlock = new ActionBlock<IBlob>(blob => CreateLinkAsync(awsManager, collection, blob, links, cancellationToken),
+                new ExecutionDataflowBlockOptions { MaxDegreeOfParallelism = 256, CancellationToken = cancellationToken });
+
+            collectionBlock.LinkTo(createLinkBlock, S3PathSyncer.DataflowLinkOptionsPropagateEnabled);
+
+            await createLinkBlock.Completion.ConfigureAwait(false);
+
+            Debug.WriteLine($"Link handler for {collection} is done");
         }
 
         async Task CreateLinkAsync(AwsManager awsManager, string name, IBlob blob, ICollection<string> tree, CancellationToken cancellationToken)
