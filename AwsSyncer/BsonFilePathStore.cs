@@ -36,6 +36,7 @@ namespace AwsSyncer
         static readonly DirectoryInfo BsonDirectory = GetBsonDirectory();
         static readonly JsonConverter DateTimeConverter = new MsTicksDateTimeJsonConverter();
         readonly FileSequence _fileSequence;
+        readonly AsyncLock _lock = new AsyncLock();
         Stream _bsonFile;
         Stream _bufferStream;
         BsonWriter _jsonWriter;
@@ -59,6 +60,8 @@ namespace AwsSyncer
             {
                 Debug.WriteLine("CloseWriter() failed: " + ex.Message);
             }
+
+            _lock.Dispose();
         }
 
         static Stream OpenBsonFileForRead(FileInfo fi)
@@ -133,7 +136,10 @@ namespace AwsSyncer
             {
                 try
                 {
-                    return LoadBlobsImpl(cancellationToken);
+                    using (await _lock.LockAsync(cancellationToken).ConfigureAwait(false))
+                    {
+                        return LoadBlobsImpl(cancellationToken);
+                    }
                 }
                 catch (OperationCanceledException)
                 {
@@ -251,7 +257,7 @@ namespace AwsSyncer
 
                 _bsonFile = OpenBsonFileForWrite(tempFileInfo);
 
-                StoreBlobs(blobs.Values, CancellationToken.None);
+                StoreBlobsImpl(blobs.Values, CancellationToken.None);
 
                 CloseWriter();
 
@@ -281,7 +287,7 @@ namespace AwsSyncer
             }
         }
 
-        public void StoreBlobs(ICollection<IBlob> blobs, CancellationToken cancellationToken)
+        void StoreBlobsImpl(ICollection<IBlob> blobs, CancellationToken cancellationToken)
         {
             OpenWriter();
 
@@ -319,7 +325,7 @@ namespace AwsSyncer
                 _jsonWriter = new BsonWriter(_bufferStream) { DateTimeKindHandling = DateTimeKind.Utc };
         }
 
-        public void CloseWriter()
+        void CloseWriter()
         {
             var jsonWriter = _jsonWriter;
             _jsonWriter = null;
@@ -347,9 +353,20 @@ namespace AwsSyncer
             bsonFile?.Close();
         }
 
-        public void Flush()
+        public async Task FlushAsync(CancellationToken cancellationToken)
         {
-            _jsonWriter?.Flush();
+            using (await _lock.LockAsync(cancellationToken).ConfigureAwait(false))
+            {
+                _jsonWriter?.Flush();
+            }
+        }
+
+        public async Task StoreBlobsAsync(ICollection<IBlob> blobs, CancellationToken cancellationToken)
+        {
+            using (await _lock.LockAsync(cancellationToken).ConfigureAwait(false))
+            {
+                StoreBlobsImpl(blobs, cancellationToken);
+            }
         }
     }
 }

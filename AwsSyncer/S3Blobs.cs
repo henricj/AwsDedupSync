@@ -86,7 +86,7 @@ namespace AwsSyncer
 
         public async Task<string> StoreAsync(IBlob blob, CancellationToken cancellationToken)
         {
-            Debug.WriteLine($"S3Blobs.StoreAsync {blob.FullFilePath}/{blob.Key.Substring(0, 12)}");
+            Debug.WriteLine($"S3Blobs.StoreAsync() {blob.FullFilePath} ({blob.Key.Substring(0, 12)})");
 
             using (var s = new FileStream(blob.FullFilePath, FileMode.Open, FileSystemRights.Read, FileShare.Read, 8192,
                 FileOptions.Asynchronous | FileOptions.SequentialScan))

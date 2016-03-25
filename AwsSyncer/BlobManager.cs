@@ -96,7 +96,7 @@ namespace AwsSyncer
 
                     try
                     {
-                        UpdateBlobs(_blobPathStore);
+                        await UpdateBlobsAsync(_blobPathStore, _cancellationTokenSource.Token).ConfigureAwait(false);
 
                         countSinceFlush += count;
                     }
@@ -113,7 +113,7 @@ namespace AwsSyncer
                         {
                             Debug.WriteLine($"Flushing cache to disk after {countSinceFlush} files and {timeSinceFlush.Elapsed}");
 
-                            _blobPathStore.Flush();
+                            await _blobPathStore.FlushAsync(_cancellationTokenSource.Token).ConfigureAwait(false);
 
                             timeSinceFlush = Stopwatch.StartNew();
                             countSinceFlush = 0;
@@ -142,24 +142,27 @@ namespace AwsSyncer
             Console.WriteLine($"Shutting down updates after scanning {blobUpdateCount} files of {SizeConversion.BytesToGiB(blobUpdateSize):F3}GiB");
         }
 
-        void UpdateBlobs(BsonFilePathStore blobPathStore)
+        async Task UpdateBlobsAsync(BsonFilePathStore blobPathStore, CancellationToken cancellationToken)
         {
             var blobs = GetBlobs();
 
-            Trace.WriteLine($"BlobManager writing {blobs.Length} items to db");
+            Debug.WriteLine($"BlobManager writing {blobs.Length} items to db");
 
-            try
+            using (var linkedTokenSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _cancellationTokenSource.Token))
             {
-                blobPathStore.StoreBlobs(blobs, _cancellationTokenSource.Token);
-            }
-            catch
-            {
-                Trace.WriteLine($"BlobManager returning {blobs.Length} items to queue");
+                try
+                {
+                    await blobPathStore.StoreBlobsAsync(blobs, linkedTokenSource.Token).ConfigureAwait(false);
+                }
+                catch
+                {
+                    Debug.WriteLine($"BlobManager returning {blobs.Length} items to queue");
 
-                foreach (var blob in blobs)
-                    _updateKnownBlobs.Enqueue(blob);
+                    foreach (var blob in blobs)
+                        _updateKnownBlobs.Enqueue(blob);
 
-                throw;
+                    throw;
+                }
             }
         }
 
@@ -400,7 +403,7 @@ namespace AwsSyncer
                 if (fingerprint.Size != fileInfo.Length)
                     return null;
 
-                Debug.WriteLine($"BlobManager.ProcessFileAsync({annotatedPath.FileInfo.FullName}) created {SizeConversion.BytesToMiB(fingerprint.Size):F3}MiB in {sw.Elapsed}");
+                Debug.WriteLine($"BlobManager.ProcessFileAsync({annotatedPath.FileInfo.FullName}) scanned {SizeConversion.BytesToMiB(fingerprint.Size):F3}MiB in {sw.Elapsed}");
 
                 var blob = new Blob(fileInfo.FullName, fileInfo.LastWriteTimeUtc, fingerprint, annotatedPath.Collection, annotatedPath.RelativePath);
 
