@@ -33,23 +33,40 @@ namespace AwsDedupSync
 
             var cts = timeout > TimeSpan.Zero ? new CancellationTokenSource(timeout) : new CancellationTokenSource();
 
-            var runTask = runAsync(cts.Token);
-
             Console.WriteLine("Press enter to cancel");
 
-            // It would be nice if Console.In.ReadLineAsync() didn't block...
-            var readTask = Task.Run(() => Console.ReadLine(), cts.Token);
+            try
+            {
+                var runTask = runAsync(cts.Token);
 
-            var anyTask = await Task.WhenAny(readTask, runTask).ConfigureAwait(false);
+                // It would be nice if Console.In.ReadLineAsync() didn't block...
+                var readTask = Task.Run(() => Console.ReadLine(), cts.Token);
 
-            if (!runTask.IsCompleted)
-                cts.Cancel();
+                var anyTask = await Task.WhenAny(readTask, runTask).ConfigureAwait(false);
 
-            await runTask.ConfigureAwait(false);
+                if (!runTask.IsCompleted)
+                {
+                    Console.WriteLine("Cancel requested");
+                    cts.Cancel();
+                }
 
-            sw.Stop();
+                // Wait for runTask to complete and/or observe any exceptions.
+                await runTask.ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                // This is normal...
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("Task failed: " + ex.Message);
+            }
+            finally
+            {
+                sw.Stop();
+            }
 
-            Console.WriteLine("Done {0} {1}", cts.Token.IsCancellationRequested ? "cancelled" : "not cancelled", sw.Elapsed);
+            Console.WriteLine("Done ({0}) {1}", cts.Token.IsCancellationRequested ? "cancelled" : "not cancelled", sw.Elapsed);
         }
     }
 }
