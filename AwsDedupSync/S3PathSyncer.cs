@@ -69,7 +69,7 @@ namespace AwsDedupSync
                 {
                     using (var awsManager = AwsManagerFactory.Create(bucket))
                     {
-                        var uniqueBlobBuffer = new BufferBlock<IBlob>();
+                        var uniqueFingerprintBlock = new BufferBlock<IBlob>();
                         var linkBlobs = new BufferBlock<IBlob>();
 
                         var blobBroadcastBlock = new BroadcastBlock<IBlob>(b => b);
@@ -84,7 +84,7 @@ namespace AwsDedupSync
                                     if (knownFingerprints.Add(blob.Fingerprint))
                                     {
                                         //Debug.WriteLine(string.Format("Queueing {0} for upload", blob.FullFilePath));
-                                        await uniqueBlobBuffer.SendAsync(blob, cancellationToken).ConfigureAwait(false);
+                                        await uniqueFingerprintBlock.SendAsync(blob, cancellationToken).ConfigureAwait(false);
                                     }
                                     //else
                                     //    Debug.WriteLine(string.Format("Skipping {0} for upload", blob.FullFilePath));
@@ -138,7 +138,7 @@ namespace AwsDedupSync
                             if (S3Settings.UploadBlobs)
                             {
                                 // ReSharper disable once AccessToDisposedClosure
-                                uploadBlobsTask = _s3BlobUploader.UploadBlobsAsync(awsManager, uniqueBlobBuffer, knownObjects, cancellationToken);
+                                uploadBlobsTask = _s3BlobUploader.UploadBlobsAsync(awsManager, uniqueFingerprintBlock, knownObjects, cancellationToken);
                             }
                         });
 
@@ -153,7 +153,7 @@ namespace AwsDedupSync
 
                         await WaitAllWithWake(tasks).ConfigureAwait(false);
 
-                        uniqueBlobBuffer.Complete();
+                        uniqueFingerprintBlock.Complete();
 
                         if (null != uploadBlobsTask)
                             await uploadBlobsTask.ConfigureAwait(false);
