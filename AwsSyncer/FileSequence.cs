@@ -45,6 +45,14 @@ namespace AwsSyncer
 
         public void Rescan()
         {
+            _directory.Refresh();
+
+            if (!_directory.Exists)
+            {
+                _files = EmptyFiles;
+                return;
+            }
+
             _files = _directory.EnumerateFiles()
                 .Select(file =>
                 {
@@ -66,6 +74,9 @@ namespace AwsSyncer
         public FileInfo NewFile()
         {
             Rescan();
+
+            if (!_directory.Exists)
+                _directory.Create();
 
             Prune();
 
