@@ -19,7 +19,6 @@
 // DEALINGS IN THE SOFTWARE.
 
 using System;
-using Amazon.DynamoDBv2;
 using Amazon.S3;
 
 namespace AwsSyncer
@@ -34,9 +33,7 @@ namespace AwsSyncer
 
             var pathManager = new PathManager(new Uri(s3Url, UriKind.Absolute), bucket);
 
-            var amazonDb = new AmazonDynamoDBClient();
-
-            return new AwsManager(amazonS3, amazonDb, pathManager);
+            return new AwsManager(amazonS3, pathManager);
         }
     }
 }
