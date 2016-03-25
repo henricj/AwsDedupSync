@@ -93,7 +93,12 @@ namespace AwsSyncer
                 Key = treeKey,
                 MD5Digest = md5Digest,
                 WebsiteRedirectLocation = link,
-                ContentType = MimeDetector.Default.GetMimeType(blob.FullFilePath)
+                ContentType = MimeDetector.Default.GetMimeType(blob.FullFilePath),
+                Headers =
+                {
+                    ["x-amz-meta-lastModified"] = blob.LastModifiedUtc.ToString("O")
+                },
+                
             };
 
             var response = await _amazon.PutObjectAsync(request, cancellationToken).ConfigureAwait(false);

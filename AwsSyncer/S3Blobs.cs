@@ -113,6 +113,7 @@ namespace AwsSyncer
                     AutoResetStreamPosition = false
                 };
 
+                request.Headers["x-amz-meta-lastModified"] = blob.LastModifiedUtc.ToString("O");
                 request.Headers["x-amz-meta-SHA2-256"] = Convert.ToBase64String(fingerprint.Sha2_256);
                 request.Headers["x-amz-meta-SHA3-512"] = Convert.ToBase64String(fingerprint.Sha3_512);
 
@@ -120,10 +121,14 @@ namespace AwsSyncer
 
                 if (null != fileName)
                 {
-                    fileName = Encoding.ASCII.GetString(Encoding.ASCII.GetBytes(fileName));
+                    if (!string.IsNullOrEmpty(blob.Collection))
+                        request.Headers["x-amz-meta-original-collection"] = blob.Collection;
 
+                    if (!string.IsNullOrEmpty(blob.RelativePath))
+                        request.Headers["x-amz-meta-original-path"] = blob.RelativePath;
+
+                    fileName = PathUtil.NormalizeAsciiName(fileName);
                     request.Headers["x-amz-meta-original-name"] = fileName;
-
                     request.Headers.ContentDisposition = "attachment; filename=" + fileName;
                 }
 
