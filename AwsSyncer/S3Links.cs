@@ -92,7 +92,7 @@ namespace AwsSyncer
 
             using (var md5 = MD5.Create())
             {
-                md5Digest = Convert.ToBase64String(md5.ComputeHash(Encoding.ASCII.GetBytes(link)));
+                md5Digest = Convert.ToBase64String(md5.ComputeHash(Encoding.UTF8.GetBytes(link)));
             }
 
             var request = new PutObjectRequest
