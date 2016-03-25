@@ -105,7 +105,7 @@ namespace AwsDedupSync
                         tasks.Add(blobBroadcastBlock.Completion);
 
 #if DEBUG
-                        var dontWaitTask = blobBroadcastBlock.Completion.ContinueWith(_ => { Debug.WriteLine("S3PathSncer.SyncPathsAsync() blobBroadcastBlock completed"); });
+                        var dontWaitTask = blobBroadcastBlock.Completion.ContinueWith(_ => { Debug.WriteLine("S3PathSyncer.SyncPathsAsync() blobBroadcastBlock completed"); });
 #endif
 
                         var loadBlobTask = blobManager.LoadAsync(namedPaths, blobBroadcastBlock);
