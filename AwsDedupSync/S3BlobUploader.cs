@@ -34,6 +34,9 @@ namespace AwsDedupSync
 
         public S3BlobUploader(S3Settings s3Settings)
         {
+            if (s3Settings == null)
+                throw new ArgumentNullException(nameof(s3Settings));
+
             _s3Settings = s3Settings;
         }
 
@@ -41,32 +44,8 @@ namespace AwsDedupSync
             IReadOnlyDictionary<string, long> knowObjects, CancellationToken cancellationToken)
         {
             var uploader = new ActionBlock<IBlob>(
-                async blob =>
-                {
-                    var delay = 750;
-                    for (var retry = 0; retry < 4; ++retry)
-                    {
-                        try
-                        {
-                            Console.WriteLine("Upload of {0} starting", blob.FullFilePath);
-
-                            // ReSharper disable once AccessToDisposedClosure
-                            await UploadBlobAsync(awsManager, blob, cancellationToken).ConfigureAwait(false);
-
-                            return;
-                        }
-                        catch (Exception ex)
-                        {
-                            Console.WriteLine("Upload of {0} failed: {1}", blob.FullFilePath, ex.Message);
-                        }
-
-                        await Task.Delay(RandomUtil.ThreadLocalRandom.Next(delay, delay * 2), cancellationToken).ConfigureAwait(false);
-
-                        delay += delay;
-                    }
-
-                    Console.WriteLine("Giving up upload of {0}", blob.FullFilePath);
-                }, new ExecutionDataflowBlockOptions
+                blob => UploadBlobAsync(awsManager, blob, cancellationToken),
+                new ExecutionDataflowBlockOptions
                 {
                     MaxDegreeOfParallelism = 4,
                     CancellationToken = cancellationToken
@@ -117,14 +96,21 @@ namespace AwsDedupSync
             return Task.WhenAll(tasks);
         }
 
-        Task UploadBlobAsync(AwsManager awsManager, IBlob blob, CancellationToken cancellationToken)
+        async Task UploadBlobAsync(AwsManager awsManager, IBlob blob, CancellationToken cancellationToken)
         {
             Console.WriteLine("Upload {0} as {1}", blob.FullFilePath, blob.Key.Substring(12));
 
             if (!_s3Settings.ActuallyWrite)
-                return Task.FromResult(false);
+                return;
 
-            return awsManager.StoreAsync(blob, cancellationToken);
+            try
+            {
+                await awsManager.StoreAsync(blob, cancellationToken).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("Upload of {0} failed: {1}", blob.FullFilePath, ex.Message);
+            }
         }
     }
 }
