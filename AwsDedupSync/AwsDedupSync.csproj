@@ -69,7 +69,10 @@
     <Compile Include="ConsoleCancel.cs" />
     <Compile Include="Program.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
+    <Compile Include="S3BlobUploader.cs" />
+    <Compile Include="S3LinkCreator.cs" />
     <Compile Include="S3PathSyncer.cs" />
+    <Compile Include="S3Settings.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Include="App.config">

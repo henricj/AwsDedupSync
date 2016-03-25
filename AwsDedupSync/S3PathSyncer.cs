@@ -19,7 +19,6 @@
 // DEALINGS IN THE SOFTWARE.
 
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
@@ -33,14 +32,21 @@ namespace AwsDedupSync
 {
     public class S3PathSyncer
     {
-        static readonly DataflowLinkOptions DataflowLinkOptionsPropagateEnabled = new DataflowLinkOptions
+        public static readonly DataflowLinkOptions DataflowLinkOptionsPropagateEnabled = new DataflowLinkOptions
         {
             PropagateCompletion = true
         };
 
-        public bool ActuallyWrite { get; set; } = true;
-        public bool UpdateLinks { get; set; } = true;
-        public bool UploadBlobs { get; set; } = true;
+        readonly S3BlobUploader _s3BlobUploader;
+        readonly S3LinkCreator _s3LinkCreator;
+
+        public S3PathSyncer()
+        {
+            _s3BlobUploader = new S3BlobUploader(S3Settings);
+            _s3LinkCreator = new S3LinkCreator(S3Settings);
+        }
+
+        public S3Settings S3Settings { get; } = new S3Settings();
 
         public async Task SyncPathsAsync(string bucket, IEnumerable<string> paths, CancellationToken cancellationToken)
         {
@@ -49,7 +55,7 @@ namespace AwsDedupSync
             var namedPaths = (from arg in paths
                               let split = arg.IndexOf('=')
                               let validSplit = split > 0 && split < arg.Length - 1
-                              select new
+                              select new CollectionPath
                               {
                                   Name = validSplit ? arg.Substring(0, split) : null,
                                   Path = PathUtil.ForceTrailingSlash(Path.GetFullPath(validSplit ? arg.Substring(split + 1) : arg))
@@ -57,288 +63,144 @@ namespace AwsDedupSync
                 .Distinct()
                 .ToArray();
 
-            using (var awsManager = AwsManagerFactory.Create(bucket))
+            using (var blobManager = new BlobManager(new StreamFingerprinter(), cancellationToken))
             {
-                var tasks = new List<Task>();
-
-                var blobManager = new BlobManager(new StreamFingerprinter());
-
-                var fingerprints = new ConcurrentDictionary<IBlobFingerprint, IBlob>();
-                var uniqueFingerprints = new BufferBlock<IBlob>();
-                var allBlobs = new BufferBlock<IBlob>();
-
-                var blobDispatcher = new ActionBlock<IBlob>(
-                    async blob =>
+                try
+                {
+                    using (var awsManager = AwsManagerFactory.Create(bucket))
                     {
-                        if (UpdateLinks)
-                            await allBlobs.SendAsync(blob, cancellationToken).ConfigureAwait(false);
+                        var uniqueBlobBuffer = new BufferBlock<IBlob>();
+                        var linkBlobs = new BufferBlock<IBlob>();
 
-                        if (UploadBlobs)
+                        var blobBroadcastBlock = new BroadcastBlock<IBlob>(b => b);
+
+                        if (S3Settings.UploadBlobs)
                         {
-                            if (fingerprints.TryAdd(blob.Fingerprint, blob))
-                            {
-                                //Trace.WriteLine(string.Format("Queueing {0} for upload", blob.FullFilePath));
-                                await uniqueFingerprints.SendAsync(blob, cancellationToken).ConfigureAwait(false);
-                            }
-                            //else
-                            //    Trace.WriteLine(string.Format("Skipping {0} for upload", blob.FullFilePath));
+                            var knownFingerprints = new HashSet<BlobFingerprint>();
+
+                            var uploadBlock = new ActionBlock<IBlob>(
+                                async blob =>
+                                {
+                                    if (knownFingerprints.Add(blob.Fingerprint))
+                                    {
+                                        //Debug.WriteLine(string.Format("Queueing {0} for upload", blob.FullFilePath));
+                                        await uniqueBlobBuffer.SendAsync(blob, cancellationToken).ConfigureAwait(false);
+                                    }
+                                    //else
+                                    //    Debug.WriteLine(string.Format("Skipping {0} for upload", blob.FullFilePath));
+                                });
+
+                            blobBroadcastBlock.LinkTo(uploadBlock, DataflowLinkOptionsPropagateEnabled);
                         }
-                        }
-                    });
 
-                var ttt = blobDispatcher.Completion.ContinueWith(t =>
-                {
-                    allBlobs.Complete();
-                    uniqueFingerprints.Complete();
-                }, cancellationToken);
+                        if (S3Settings.UpdateLinks)
+                            blobBroadcastBlock.LinkTo(linkBlobs, DataflowLinkOptionsPropagateEnabled);
 
-                tasks.Add(ttt);
+                        // Make sure we have at least one block consuming blobs.
+                        if (!S3Settings.UploadBlobs && !S3Settings.UpdateLinks)
+                            blobBroadcastBlock.LinkTo(DataflowBlock.NullTarget<IBlob>());
 
-                var distinctPaths = namedPaths.Select(p => p.Path).Distinct(StringComparer.InvariantCultureIgnoreCase).ToArray();
+                        var tasks = new List<Task>();
 
-                var loadBlobTask = blobManager.LoadAsync(distinctPaths, blobTargetBlock);
-
-                tasks.Add(loadBlobTask);
-
-                if (UpdateLinks)
-                {
-                    var livePaths = namedPaths.Where(p => null != p.Name).Distinct().ToLookup(p => p.Name, p => p.Path);
-
-                    if (livePaths.Count > 0)
-                    {
-                        var updateLinksTask = UpdateLinksAsync(awsManager, livePaths, linkBlobs, cancellationToken);
-
-                        tasks.Add(updateLinksTask);
-                    }
-                }
-
-                var knownObjects = await awsManager.ScanAsync(cancellationToken).ConfigureAwait(false);
-
-                if (UploadBlobs)
-                {
-                    var uploadBlobsTask = UploadBlobsAsync(awsManager, uniqueFingerprints, knownObjects, cancellationToken);
-
-                    tasks.Add(uploadBlobsTask);
-                }
-
-                await Task.WhenAll(tasks).ConfigureAwait(false);
-            }
-        }
-
-        Task UpdateLinksAsync(AwsManager awsManager, ILookup<string, string> livePaths, ISourceBlock<IBlob> linkBlobs, CancellationToken cancellationToken)
-        {
-            var linksTask = CreateLinksAsync(awsManager, livePaths, linkBlobs, cancellationToken);
-
-            var traceTask = linksTask.ContinueWith(t => Trace.WriteLine("Done processing links"), cancellationToken);
-
-            return Task.WhenAll(linksTask, traceTask);
-        }
-
-        Task UploadBlobsAsync(AwsManager awsManager, BufferBlock<IBlob> uniqueFingerprints, IReadOnlyDictionary<string, long> knowObjects, CancellationToken cancellationToken)
-        {
-            var tasks = new List<Task>();
-
-            var uploader = new ActionBlock<IBlob>(
-                async blob =>
-                {
-                    try
-                    {
-                        // ReSharper disable once AccessToDisposedClosure
-                        await UploadBlobAsync(awsManager, blob, cancellationToken).ConfigureAwait(false);
-
-                        return;
-                    }
-                    catch (Exception ex)
-                    {
-                        Console.WriteLine("Upload of {0} failed (retrying): {1}", blob.FullFilePath, ex.Message);
-                    }
-
-                    await uniqueFingerprints.SendAsync(blob, cancellationToken).ConfigureAwait(false);
-                }, new ExecutionDataflowBlockOptions
-                {
-                    MaxDegreeOfParallelism = 4
-                });
-
-            var blobCount = 0;
-            var blobTotalSize = 0L;
-
-            var uploaderCounter = new TransformBlock<IBlob, IBlob>(blob =>
-            {
-                Interlocked.Increment(ref blobCount);
-
-                Interlocked.Add(ref blobTotalSize, blob.Fingerprint.Size);
-
-                return blob;
-            });
-
-            var counterCompletionTask = uploaderCounter.Completion.ContinueWith(t =>
-                Trace.WriteLine($"Uploader done queueing {blobCount} items {SizeConversion.BytesToGiB(blobTotalSize):F2}GiB"),
-                cancellationToken);
-
-            tasks.Add(counterCompletionTask);
-
-            uploaderCounter.LinkTo(uploader, DataflowLinkOptionsPropagateEnabled);
-
-            uniqueFingerprints.LinkTo(uploaderCounter, DataflowLinkOptionsPropagateEnabled,
-                blob =>
-                {
-                    var exists = knowObjects.ContainsKey(blob.Key);
-
-                    //Trace.WriteLine($"{blob.FullFilePath} {(exists ? "already exists" : "scheduled for upload")}");
-
-                    return !exists;
-                });
-
-            uniqueFingerprints.LinkTo(DataflowBlock.NullTarget<IBlob>());
+                        tasks.Add(blobBroadcastBlock.Completion);
 
 #if DEBUG
-            var uploadDoneTask = uploader.Completion.ContinueWith(t => Debug.WriteLine("Done uploading blobs"), cancellationToken);
-
-            tasks.Add(uploadDoneTask);
+                        var dontWaitTask = blobBroadcastBlock.Completion.ContinueWith(_ => { Debug.WriteLine("S3PathSncer.SyncPathsAsync() blobBroadcastBlock completed"); });
 #endif
 
-            tasks.Add(uploader.Completion);
+                        var loadBlobTask = blobManager.LoadAsync(namedPaths, blobBroadcastBlock);
 
-            return Task.WhenAll(tasks);
-        }
+                        tasks.Add(loadBlobTask);
 
-        async Task CreateLinksAsync(AwsManager awsManager, ILookup<string, string> linkPaths, ISourceBlock<IBlob> linkBlobs, CancellationToken cancellationToken)
-        {
-            // ReSharper disable once AccessToDisposedClosure
-            var pathTasks = linkPaths.Select(
-                namePath => new
+                        if (S3Settings.UpdateLinks)
+                        {
+                            var livePaths = namedPaths.Where(p => null != p.Name).Distinct().ToLookup(p => p.Name, p => p.Path);
+
+                            if (livePaths.Count > 0)
+                            {
+                                var updateLinksTask = _s3LinkCreator.UpdateLinksAsync(awsManager, livePaths, linkBlobs, cancellationToken);
+
+                                tasks.Add(updateLinksTask);
+                            }
+                            else
+                            {
+                                // Can we even get here...?
+                                linkBlobs.LinkTo(DataflowBlock.NullTarget<IBlob>());
+                            }
+                        }
+
+                        Task uploadBlobsTask = null;
+                        var scanBlobAsync = Task.Run(async () =>
+                        {
+                            // ReSharper disable once AccessToDisposedClosure
+                            var knownObjects = await awsManager.ScanAsync(cancellationToken).ConfigureAwait(false);
+
+                            if (S3Settings.UploadBlobs)
+                            {
+                                // ReSharper disable once AccessToDisposedClosure
+                                uploadBlobsTask = _s3BlobUploader.UploadBlobsAsync(awsManager, uniqueBlobBuffer, knownObjects, cancellationToken);
+                            }
+                        });
+
+                        tasks.Add(scanBlobAsync);
+
+                        if (S3Settings.UpdateMeta)
+                        {
+                            var updateMetaTask = UpdateMetaAsync(awsManager, blobManager, blobBroadcastBlock.Completion, cancellationToken);
+
+                            tasks.Add(updateMetaTask);
+                        }
+
+                        await WaitAllWithWake(tasks).ConfigureAwait(false);
+
+                        uniqueBlobBuffer.Complete();
+
+                        if (null != uploadBlobsTask)
+                            await uploadBlobsTask.ConfigureAwait(false);
+                    }
+                }
+                finally
                 {
-                    NamePath = namePath,
-                    LinksTask = awsManager.GetLinksAsync(namePath.Key, cancellationToken)
-                }).ToArray();
-
-            await Task.WhenAll(pathTasks.Select(pt => pt.LinksTask)).ConfigureAwait(false);
-
-            var linkTrees = pathTasks.Select(pt => new
-            {
-                pt.NamePath,
-                Tree = pt.LinksTask.Result
-            }).ToArray();
-
-            var broadcastBlock = new BroadcastBlock<IBlob>(b => b);
-
-            var tasks = new List<Task>();
-
-            foreach (var linkTree in linkTrees)
-            {
-                foreach (var path in linkTree.NamePath)
-                {
-                    var key = linkTree.NamePath.Key;
-                    var localPath = path;
-                    var links = linkTree.Tree;
-
-                    var createLinkBlock = new ActionBlock<IBlob>(
-                        blob => CreateLinkAsync(awsManager, key, localPath, blob, links, cancellationToken));
-
-                    var bufferBlock = new BufferBlock<IBlob>();
-
-                    bufferBlock.LinkTo(createLinkBlock, DataflowLinkOptionsPropagateEnabled);
-                    broadcastBlock.LinkTo(bufferBlock, DataflowLinkOptionsPropagateEnabled);
-
-                    tasks.Add(createLinkBlock.Completion);
+                    await blobManager.ShutdownAsync().ConfigureAwait(false);
                 }
             }
-
-            linkBlobs.LinkTo(broadcastBlock, DataflowLinkOptionsPropagateEnabled);
-
-            await Task.WhenAll(tasks).ConfigureAwait(false);
         }
 
-#if false
-        async Task BuildTreeAsync(AwsManager awsManager, string name, string path, ILookup<IBlobFingerprint, IBlob> uniqueBlobs, CancellationToken cancellationToken)
+        async Task UpdateMetaAsync(AwsManager awsManager, BlobManager blobManager, Task allBlobsCreatedTask, CancellationToken cancellationToken)
         {
-            if (!path.EndsWith("/", StringComparison.OrdinalIgnoreCase) && !path.EndsWith("\\", StringComparison.OrdinalIgnoreCase))
-                path += "\\";
+            await allBlobsCreatedTask.ConfigureAwait(false);
 
-            var tree = await awsManager.GetLinksAsync(name, cancellationToken).ConfigureAwait(false);
+            foreach (var fingerprintBlobs in blobManager.AllBlobs)
+            {
+                // ReSharper disable once AccessToDisposedClosure
+                await awsManager.UpdateBlobPaths(fingerprintBlobs.Key, fingerprintBlobs.Value, cancellationToken).ConfigureAwait(false);
+            }
+            //return Task.CompletedTask;
+            //var allBlobs = new Dictionary<IBlobFingerprint, BlobFingerprintPaths>();
 
-            var tasks = uniqueBlobs
-                .AsParallel()
-                .SelectMany(b => b).Select(blob => CreateLinkAsync(awsManager, name, path, blob, tree, cancellationToken))
-                .Where(t => null != t)
-                .ToArray();
+            //var captureAllBlock = new ActionBlock<IBlob>(blob =>
+            //{
+            //    BlobFingerprintPaths blobFingerprintPaths;
+            //    if (!allBlobs.TryGetValue(blob.Fingerprint, out blobFingerprintPaths))
+            //    {
+            //        blobFingerprintPaths = new BlobFingerprintPaths(blob.Fingerprint);
+            //    }
 
-            await Task.WhenAll(tasks).ConfigureAwait(false);
+            //    blobFingerprintPaths.Add();
+            //});
         }
 
-#endif
-
-        Task CreateLinkAsync(AwsManager awsManager, string name, string path, IBlob blob, ICollection<string> tree, CancellationToken cancellationToken)
+        static async Task WaitAllWithWake(ICollection<Task> tasks)
         {
-            var relativePath = PathUtil.MakeRelativePath(path, blob.FullFilePath);
+            for (;;)
+            {
+                var pendingTasks = tasks.Where(t => !t.IsCompleted).ToArray();
 
-            if (relativePath.StartsWith(".."))
-                return Task.CompletedTask;
+                if (0 == pendingTasks.Length)
+                    break;
 
-            if (relativePath == blob.FullFilePath)
-                return Task.CompletedTask;
-
-            if (relativePath.StartsWith("file:", StringComparison.OrdinalIgnoreCase))
-                return Task.CompletedTask;
-
-            relativePath = relativePath.Replace('\\', '/');
-
-            if (relativePath.StartsWith("/", StringComparison.Ordinal))
-                return Task.CompletedTask;
-
-            if (tree.Contains(relativePath))
-                return Task.CompletedTask;
-
-            Console.WriteLine("Link {0} {1} -> {2}", name, relativePath, blob.Key.Substring(12));
-
-            if (!ActuallyWrite)
-                return Task.CompletedTask;
-
-            return awsManager.CreateLinkAsync(name, relativePath, blob, cancellationToken);
+                await Task.WhenAny(Task.WhenAll(pendingTasks), Task.Delay(TimeSpan.FromSeconds(3))).ConfigureAwait(false);
+            }
         }
-
-        Task UploadBlobAsync(AwsManager awsManager, IBlob blob, CancellationToken cancellationToken)
-        {
-            Console.WriteLine("Upload {0} as {1}", blob.FullFilePath, blob.Key.Substring(12));
-
-            if (!ActuallyWrite)
-                return Task.FromResult(false);
-
-            return awsManager.StoreAsync(blob, cancellationToken);
-        }
-
-#if false
-        Task UploadBlobsAsync(AwsManager awsManager, ILookup<IBlobFingerprint, IBlob> uniqueBlobs, IReadOnlyDictionary<string, long> knowObjects, CancellationToken cancellationToken)
-        {
-            var queue = new ConcurrentBag<IBlob>(uniqueBlobs
-                .Select(blobs => blobs.First())
-                .Where(blob => !knowObjects.ContainsKey(blob.Key)));
-
-            var count = Math.Max(Environment.ProcessorCount * 2, 12);
-
-            var workerTasks = Enumerable.Range(1, count)
-                .Select(async i =>
-                {
-                    for (;;)
-                    {
-                        IBlob blob;
-                        if (!queue.TryTake(out blob))
-                            return;
-
-                        try
-                        {
-                            await UploadBlobAsync(awsManager, blob, cancellationToken).ConfigureAwait(false);
-                        }
-                        catch (Exception ex)
-                        {
-                            Console.WriteLine("Upload of {0} failed (retrying): {1}", blob.FullFilePath, ex.Message);
-                            queue.Add(blob);
-                        }
-                    }
-                });
-
-            return Task.WhenAll(workerTasks);
-        }
-#endif
     }
 }
