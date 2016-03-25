@@ -643,7 +643,7 @@ namespace AwsSyncer
                         if (string.Equals(mimeType, existingMimeType, StringComparison.OrdinalIgnoreCase))
                             continue;
 
-                        Debug.WriteLine("MimeDetector {0} {1} -> {2}", extension, existingMimeType, mimeType);
+                        //Debug.WriteLine("MimeDetector {0} {1} -> {2}", extension, existingMimeType, mimeType);
                     }
 
                     _mimeTypes[extension] = mimeType;
