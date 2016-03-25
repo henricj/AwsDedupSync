@@ -20,6 +20,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Configuration;
 using System.Diagnostics;
 using System.IO;
 using System.Threading;
@@ -82,6 +83,11 @@ namespace AwsSyncer
                 Environment.SpecialFolderOption.Create);
 
             var path = Path.Combine(localApplicationData, "AwsSyncer", "BsonPaths");
+
+            var bucket = ConfigurationManager.AppSettings["bucket"];
+
+            if (!string.IsNullOrWhiteSpace(bucket))
+                path = Path.Combine(path, bucket);
 
             return new DirectoryInfo(path);
         }
