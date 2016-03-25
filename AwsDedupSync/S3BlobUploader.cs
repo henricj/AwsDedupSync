@@ -98,7 +98,7 @@ namespace AwsDedupSync
 
         async Task UploadBlobAsync(AwsManager awsManager, IBlob blob, CancellationToken cancellationToken)
         {
-            Console.WriteLine("Upload {0} as {1}", blob.FullFilePath, blob.Key.Substring(12));
+            Console.WriteLine("Upload {0} as {1}", blob.FullFilePath, blob.Key.Substring(0, 12));
 
             if (!_s3Settings.ActuallyWrite)
                 return;

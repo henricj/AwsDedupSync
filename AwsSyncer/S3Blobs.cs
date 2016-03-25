@@ -24,7 +24,6 @@ using System.Diagnostics;
 using System.IO;
 using System.Net;
 using System.Security.AccessControl;
-using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Amazon.S3;
@@ -87,7 +86,7 @@ namespace AwsSyncer
 
         public async Task<string> StoreAsync(IBlob blob, CancellationToken cancellationToken)
         {
-            Debug.WriteLine("S3Blobs.StoreAsync " + blob.FullFilePath);
+            Debug.WriteLine($"S3Blobs.StoreAsync {blob.FullFilePath}/{blob.Key.Substring(0, 12)}");
 
             using (var s = new FileStream(blob.FullFilePath, FileMode.Open, FileSystemRights.Read, FileShare.Read, 8192,
                 FileOptions.Asynchronous | FileOptions.SequentialScan))

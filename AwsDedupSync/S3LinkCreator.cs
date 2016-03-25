@@ -136,7 +136,7 @@ namespace AwsDedupSync
             if (tree.Contains(relativePath))
                 return;
 
-            Console.WriteLine("Link {0} {1} -> {2}", name, relativePath, blob.Key.Substring(12));
+            Console.WriteLine("Link {0} {1} -> {2}", name, relativePath, blob.Key.Substring(0, 12));
 
             if (!_s3Settings.ActuallyWrite)
                 return;
@@ -147,7 +147,7 @@ namespace AwsDedupSync
             }
             catch (Exception ex)
             {
-                Console.WriteLine("Link {0} {1} -> {2} failed: {3}", name, relativePath, blob.Key.Substring(12), ex.Message);
+                Console.WriteLine("Link {0} {1} -> {2} failed: {3}", name, relativePath, blob.Key.Substring(0, 12), ex.Message);
             }
         }
     }
