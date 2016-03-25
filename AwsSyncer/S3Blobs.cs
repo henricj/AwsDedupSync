@@ -36,16 +36,20 @@ namespace AwsSyncer
     {
         readonly IAmazonS3 _amazon;
         readonly IPathManager _pathManager;
+        readonly S3StorageClass _s3StorageClass;
 
-        public S3Blobs(IAmazonS3 amazon, IPathManager pathManager)
+        public S3Blobs(IAmazonS3 amazon, IPathManager pathManager, S3StorageClass s3StorageClass)
         {
             if (null == amazon)
                 throw new ArgumentNullException(nameof(amazon));
             if (null == pathManager)
                 throw new ArgumentNullException(nameof(pathManager));
+            if (null == s3StorageClass)
+                throw new ArgumentNullException(nameof(s3StorageClass));
 
             _amazon = amazon;
             _pathManager = pathManager;
+            _s3StorageClass = s3StorageClass;
         }
 
         public async Task<IReadOnlyDictionary<string, long>> ListAsync(CancellationToken cancellationToken)
@@ -109,6 +113,7 @@ namespace AwsSyncer
                         ContentLength = fingerprint.Size,
                         ContentMD5 = md5Digest
                     },
+                    StorageClass = _s3StorageClass,
                     AutoCloseStream = false,
                     AutoResetStreamPosition = false
                 };

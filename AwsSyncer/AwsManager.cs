@@ -20,6 +20,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Configuration;
 using System.Diagnostics;
 using System.Linq;
 using System.Threading;
@@ -45,8 +46,26 @@ namespace AwsSyncer
             _pathManager = pathManager;
             _amazonS3 = amazonS3;
 
-            _s3Blobs = new S3Blobs(amazonS3, pathManager);
-            _s3Links = new S3Links(amazonS3, pathManager);
+            var storageClass = S3StorageClass.Standard;
+            var storageClassString = ConfigurationManager.AppSettings["AwsStorageClass"];
+
+            if (!string.IsNullOrWhiteSpace(storageClassString))
+                storageClass = S3StorageClass.FindValue(storageClassString);
+
+            var blobStorageClass = storageClass;
+            var blobStorageClassString = ConfigurationManager.AppSettings["AwsBlobStorageClass"];
+
+            if (!string.IsNullOrWhiteSpace(blobStorageClassString))
+                blobStorageClass = S3StorageClass.FindValue(blobStorageClassString);
+
+            var linkStorageClass = storageClass;
+            var linkStorageClassString = ConfigurationManager.AppSettings["AwsLinkStorageClass"];
+
+            if (!string.IsNullOrWhiteSpace(linkStorageClassString))
+                linkStorageClass = S3StorageClass.FindValue(linkStorageClassString);
+
+            _s3Blobs = new S3Blobs(amazonS3, pathManager, blobStorageClass);
+            _s3Links = new S3Links(amazonS3, pathManager, linkStorageClass);
         }
 
         #region IDisposable Members

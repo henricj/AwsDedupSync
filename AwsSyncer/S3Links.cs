@@ -35,11 +35,20 @@ namespace AwsSyncer
     {
         readonly IAmazonS3 _amazon;
         readonly IPathManager _pathManager;
+        readonly S3StorageClass _s3StorageClass;
 
-        public S3Links(IAmazonS3 amazon, IPathManager pathManager)
+        public S3Links(IAmazonS3 amazon, IPathManager pathManager, S3StorageClass s3StorageClass)
         {
+            if (null == amazon)
+                throw new ArgumentNullException(nameof(amazon));
+            if (null == pathManager)
+                throw new ArgumentNullException(nameof(pathManager));
+            if (null == s3StorageClass)
+                throw new ArgumentNullException(nameof(s3StorageClass));
+
             _amazon = amazon;
             _pathManager = pathManager;
+            _s3StorageClass = s3StorageClass;
         }
 
         public async Task<ICollection<string>> ListAsync(string name, CancellationToken cancellationToken)
@@ -94,6 +103,7 @@ namespace AwsSyncer
                 MD5Digest = md5Digest,
                 WebsiteRedirectLocation = link,
                 ContentType = MimeDetector.Default.GetMimeType(blob.FullFilePath),
+                StorageClass = _s3StorageClass,
                 Headers =
                 {
                     ["x-amz-meta-lastModified"] = blob.LastModifiedUtc.ToString("O")
