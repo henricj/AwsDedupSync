@@ -309,6 +309,8 @@ namespace AwsSyncer
 
         void OpenWriter()
         {
+            Debug.WriteLine("BsonFilePathStore.OpenWriter()");
+
             if (null == _bsonFile)
             {
                 var fi = _fileSequence.NewFile();
@@ -327,6 +329,8 @@ namespace AwsSyncer
 
         void CloseWriter()
         {
+            Debug.WriteLine("BsonFilePathStore.CloseWriter()");
+
             var jsonWriter = _jsonWriter;
             _jsonWriter = null;
 
