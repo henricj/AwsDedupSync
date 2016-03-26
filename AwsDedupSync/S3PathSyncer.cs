@@ -63,7 +63,7 @@ namespace AwsDedupSync
                 .Distinct()
                 .ToArray();
 
-            using (var blobManager = new BlobManager(new StreamFingerprinter(), cancellationToken))
+            using (var blobManager = new BlobManager(new StreamFingerprinter()))
             {
                 try
                 {
@@ -108,7 +108,7 @@ namespace AwsDedupSync
                         var dontWaitTask = blobBroadcastBlock.Completion.ContinueWith(_ => { Debug.WriteLine("S3PathSyncer.SyncPathsAsync() blobBroadcastBlock completed"); });
 #endif
 
-                        var loadBlobTask = blobManager.LoadAsync(namedPaths, blobBroadcastBlock);
+                        var loadBlobTask = blobManager.LoadAsync(namedPaths, blobBroadcastBlock, cancellationToken);
 
                         tasks.Add(loadBlobTask);
 
@@ -161,7 +161,7 @@ namespace AwsDedupSync
                 }
                 finally
                 {
-                    await blobManager.ShutdownAsync().ConfigureAwait(false);
+                    await blobManager.ShutdownAsync(cancellationToken).ConfigureAwait(false);
                 }
             }
         }

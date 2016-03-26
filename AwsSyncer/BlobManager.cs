@@ -33,29 +33,22 @@ namespace AwsSyncer
 {
     public sealed class BlobManager : IDisposable
     {
-        const int FlushCount = 5000;
+        const int FlushCount = 1024;
         static readonly TimeSpan FlushInterval = TimeSpan.FromMinutes(10);
         readonly BsonFilePathStore _blobPathStore = new BsonFilePathStore();
-        readonly Task _cacheManager;
-        readonly CancellationTokenSource _cancellationTokenSource;
         readonly StreamFingerprinter _fingerprinter;
 
         readonly ConcurrentDictionary<BlobFingerprint, ConcurrentBag<IBlob>> _knownFingerprints
             = new ConcurrentDictionary<BlobFingerprint, ConcurrentBag<IBlob>>();
 
-        readonly ConcurrentQueue<IBlob> _updateKnownBlobs = new ConcurrentQueue<IBlob>();
-
         IReadOnlyDictionary<string, IBlob> _previouslyCachedBlobs;
 
-        public BlobManager(StreamFingerprinter fingerprinter, CancellationToken cancellationToken)
+        public BlobManager(StreamFingerprinter fingerprinter)
         {
             if (null == fingerprinter)
                 throw new ArgumentNullException(nameof(fingerprinter));
 
-            _cancellationTokenSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-
             _fingerprinter = fingerprinter;
-            _cacheManager = new Task(ManageCache);
         }
 
         public IReadOnlyDictionary<BlobFingerprint, ConcurrentBag<IBlob>> AllBlobs => _knownFingerprints;
@@ -64,145 +57,49 @@ namespace AwsSyncer
 
         public void Dispose()
         {
-            ShutdownAsync().Wait();
+            try
+            { }
+            catch (Exception ex)
+            {
+                Debug.WriteLine("BlobManager.Dispose() CancelWorker() failed: " + ex.Message);
+            }
 
             _blobPathStore.Dispose();
-
-            _cancellationTokenSource.Dispose();
         }
 
         #endregion
 
-        async void ManageCache()
+        async Task WriteBlobsAsync(BsonFilePathStore blobPathStore, IList<IBlob> blobs, CancellationToken cancellationToken)
         {
-            var blobUpdateCount = 0;
-            var blobUpdateSize = 0L;
+            Debug.WriteLine($"BlobManager writing {blobs.Count} items to db");
 
             try
             {
-                var rng = RandomUtil.CreateRandom();
-
-                var timeSinceFlush = Stopwatch.StartNew();
-                var countSinceFlush = 0;
-
-                while (!_cancellationTokenSource.Token.IsCancellationRequested)
-                {
-                    await Task.Delay(7500 + rng.Next(2500), _cancellationTokenSource.Token).ConfigureAwait(false);
-
-                    var count = _updateKnownBlobs.Count;
-
-                    if (count <= 0)
-                        continue;
-
-                    try
-                    {
-                        await UpdateBlobsAsync(_blobPathStore, _cancellationTokenSource.Token).ConfigureAwait(false);
-
-                        countSinceFlush += count;
-                    }
-                    catch (OperationCanceledException)
-                    { }
-                    catch (Exception ex)
-                    {
-                        Debug.WriteLine("Cache update failed: " + ex.Message);
-                    }
-
-                    if (countSinceFlush > FlushCount || (countSinceFlush > 0 && timeSinceFlush.Elapsed > FlushInterval))
-                    {
-                        try
-                        {
-                            Debug.WriteLine($"Flushing cache to disk after {countSinceFlush} files and {timeSinceFlush.Elapsed}");
-
-                            await _blobPathStore.FlushAsync(_cancellationTokenSource.Token).ConfigureAwait(false);
-
-                            timeSinceFlush = Stopwatch.StartNew();
-                            countSinceFlush = 0;
-                        }
-                        catch (OperationCanceledException)
-                        { }
-                        catch (Exception ex)
-                        {
-                            Debug.WriteLine("Cache flush to disk failed: " + ex.Message);
-                        }
-                    }
-                }
+                await blobPathStore.StoreBlobsAsync(blobs, cancellationToken).ConfigureAwait(false);
             }
-            catch (OperationCanceledException)
+            catch
             {
-                // Normal...
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine("BlobManager's cache task failed: " + ex.Message);
-            }
-
-            blobUpdateCount = _blobPathStore.BlobUpdateCount;
-            blobUpdateSize = _blobPathStore.BlobUpdateSize;
-
-            Console.WriteLine($"Shutting down updates after scanning {blobUpdateCount} files of {SizeConversion.BytesToGiB(blobUpdateSize):F3}GiB");
-        }
-
-        async Task UpdateBlobsAsync(BsonFilePathStore blobPathStore, CancellationToken cancellationToken)
-        {
-            var blobs = GetBlobs();
-
-            Debug.WriteLine($"BlobManager writing {blobs.Length} items to db");
-
-            using (var linkedTokenSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _cancellationTokenSource.Token))
-            {
-                try
-                {
-                    await blobPathStore.StoreBlobsAsync(blobs, linkedTokenSource.Token).ConfigureAwait(false);
-                }
-                catch
-                {
-                    Debug.WriteLine($"BlobManager returning {blobs.Length} items to queue");
-
-                    foreach (var blob in blobs)
-                        _updateKnownBlobs.Enqueue(blob);
-
-                    throw;
-                }
+                Debug.WriteLine($"BlobManager store of {blobs.Count} items failed");
             }
         }
 
-        IBlob[] GetBlobs()
+        public async Task LoadAsync(CollectionPath[] paths, ITargetBlock<IBlob> blobTargetBlock, CancellationToken cancellationToken)
         {
-            var list = new List<IBlob>(_updateKnownBlobs.Count);
-
-            IBlob blob;
-            while (_updateKnownBlobs.TryDequeue(out blob))
-                list.Add(blob);
-
-            _cancellationTokenSource.Token.ThrowIfCancellationRequested();
-
-            return list.OrderBy(b => b.FullFilePath).ToArray();
-        }
-
-        public async Task LoadAsync(CollectionPath[] paths, ITargetBlock<IBlob> blobTargetBlock)
-        {
-            _previouslyCachedBlobs = await _blobPathStore.LoadBlobsAsync(_cancellationTokenSource.Token).ConfigureAwait(false);
+            _previouslyCachedBlobs = await _blobPathStore.LoadBlobsAsync(cancellationToken).ConfigureAwait(false);
 
             Debug.WriteLine($"Loaded {_previouslyCachedBlobs.Count} known blobs");
 
             foreach (var blob in _previouslyCachedBlobs.Values)
                 AddFingerprint(blob);
 
-            if (_cacheManager.Status == TaskStatus.Created)
-                _cacheManager.Start();
-
-            await GenerateBlobsAsync(paths, blobTargetBlock).ConfigureAwait(false);
+            await GenerateBlobsAsync(paths, blobTargetBlock, cancellationToken).ConfigureAwait(false);
         }
 
-        public Task ShutdownAsync()
+        public async Task ShutdownAsync(CancellationToken cancellationToken)
         {
-            if (!_cancellationTokenSource.IsCancellationRequested)
-                _cancellationTokenSource.Cancel();
+            Debug.WriteLine("BlobManager.ShutdownAsync()");
 
-            if (_cacheManager.Status == TaskStatus.Created)
-                return Task.CompletedTask;
-
-            return _cacheManager;
+            await _blobPathStore.FlushAsync(cancellationToken).ConfigureAwait(false);
         }
 
         static string GetHost(string path)
@@ -212,13 +109,36 @@ namespace AwsSyncer
             return uri.IsAbsoluteUri ? uri.Host : string.Empty;
         }
 
-        async Task GenerateBlobsAsync(CollectionPath[] paths, ITargetBlock<IBlob> blobTargetBlock)
+        async Task GenerateBlobsAsync(CollectionPath[] paths, ITargetBlock<IBlob> blobTargetBlock, CancellationToken cancellationToken)
         {
             try
             {
+                var blobCacheBlock = new BatchBlock<IBlob>(FlushCount, new GroupingDataflowBlockOptions { CancellationToken = cancellationToken });
+
+                var storeCacheBlock = new ActionBlock<IBlob[]>(async blobs =>
+                {
+                    try
+                    {
+                        await WriteBlobsAsync(_blobPathStore, blobs, cancellationToken).ConfigureAwait(false);
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        // Normal...
+                    }
+                    catch (Exception)
+                    {
+                        Debug.WriteLine("UpdateBlobsAsync() failed");
+                    }
+                });
+
+                blobCacheBlock.LinkTo(storeCacheBlock, new DataflowLinkOptions { PropagateCompletion = true });
+
                 var targets = new ConcurrentDictionary<string, TransformBlock<AnnotatedPath, IBlob>>(StringComparer.InvariantCultureIgnoreCase);
 
-                var cancellationToken = _cancellationTokenSource.Token;
+                var broadcastBlock = new BroadcastBlock<IBlob>(b => b, new DataflowBlockOptions { CancellationToken = cancellationToken });
+
+                broadcastBlock.LinkTo(blobCacheBlock, new DataflowLinkOptions { PropagateCompletion = true });
+                broadcastBlock.LinkTo(blobTargetBlock, new DataflowLinkOptions { PropagateCompletion = true });
 
                 var routeBlock = new ActionBlock<AnnotatedPath[]>(
                     async filenames =>
@@ -244,7 +164,7 @@ namespace AwsSyncer
                             TransformBlock<AnnotatedPath, IBlob> target;
                             while (!targets.TryGetValue(host, out target))
                             {
-                                target = new TransformBlock<AnnotatedPath, IBlob>((Func<AnnotatedPath, Task<IBlob>>)ProcessFileAsync,
+                                target = new TransformBlock<AnnotatedPath, IBlob>(annotatedPath => ProcessFileAsync(annotatedPath, cancellationToken),
                                     new ExecutionDataflowBlockOptions
                                     {
                                         MaxDegreeOfParallelism = 5,
@@ -256,7 +176,7 @@ namespace AwsSyncer
 
                                 Debug.WriteLine($"BlobManager.GenerateBlobsAsync() starting reader for host: '{host}'");
 
-                                target.LinkTo(blobTargetBlock, blob => null != blob);
+                                target.LinkTo(broadcastBlock, blob => null != blob);
                                 target.LinkTo(DataflowBlock.NullTarget<IBlob>());
 
                                 break;
@@ -293,26 +213,29 @@ namespace AwsSyncer
                     PropagateCompletion = true
                 });
 
-                var completeTask = routeBlock.Completion.ContinueWith(
-                    _ =>
-                    {
-                        Task.WhenAll(targets.Values.Select(target => target.Completion))
-                            .ContinueWith(__ => blobTargetBlock.Complete());
-
-                        foreach (var target in targets.Values)
-                            target.Complete();
-                    });
-
                 try
                 {
-                    await PostAllFilePathsAsync(paths, batcher).ConfigureAwait(false);
+                    await PostAllFilePathsAsync(paths, batcher, cancellationToken).ConfigureAwait(false);
                 }
-                finally
+                catch (OperationCanceledException)
+                { }
+                catch (Exception ex)
                 {
-                    batcher.Complete();
+                    Console.Write("Path scan failed: " + ex.Message);
                 }
 
+                batcher.Complete();
+
                 await routeBlock.Completion.ConfigureAwait(false);
+
+                foreach (var target in targets.Values)
+                    target.Complete();
+
+                await Task.WhenAll(targets.Values.Select(target => target.Completion));
+
+                broadcastBlock.Complete();
+
+                await storeCacheBlock.Completion.ConfigureAwait(false);
             }
             catch (Exception ex)
             {
@@ -340,7 +263,7 @@ namespace AwsSyncer
             return blob;
         }
 
-        Task PostAllFilePathsAsync(CollectionPath[] paths, ITargetBlock<AnnotatedPath> filePathTargetBlock)
+        static Task PostAllFilePathsAsync(CollectionPath[] paths, ITargetBlock<AnnotatedPath> filePathTargetBlock, CancellationToken cancellationToken)
         {
             var scanTasks = paths
                 .Select<CollectionPath, Task>(path =>
@@ -348,28 +271,28 @@ namespace AwsSyncer
                     {
                         foreach (var file in PathUtil.ScanDirectory(path.Path))
                         {
-                            if (_cancellationTokenSource.Token.IsCancellationRequested)
+                            if (cancellationToken.IsCancellationRequested)
                                 break;
 
                             var relativePath = PathUtil.MakeRelativePath(path.Path, file.FullName);
 
                             var annotatedPath = new AnnotatedPath { FileInfo = file, Collection = path.Name ?? path.Path, RelativePath = relativePath };
 
-                            await filePathTargetBlock.SendAsync(annotatedPath).ConfigureAwait(false);
+                            await filePathTargetBlock.SendAsync(annotatedPath, cancellationToken).ConfigureAwait(false);
                         }
                     },
-                        _cancellationTokenSource.Token,
+                        cancellationToken,
                         TaskCreationOptions.DenyChildAttach | TaskCreationOptions.LongRunning | TaskCreationOptions.RunContinuationsAsynchronously,
                         TaskScheduler.Default));
 
             return Task.WhenAll(scanTasks);
         }
 
-        async Task<IBlob> ProcessFileAsync(AnnotatedPath annotatedPath)
+        async Task<IBlob> ProcessFileAsync(AnnotatedPath annotatedPath, CancellationToken cancellationToken)
         {
             //Debug.WriteLine($"BlobManager.ProcessFileAsync({annotatedPath})");
 
-            if (_cancellationTokenSource.Token.IsCancellationRequested)
+            if (cancellationToken.IsCancellationRequested)
                 return null;
 
             var fp = _fingerprinter;
@@ -383,11 +306,6 @@ namespace AwsSyncer
                 if (!fileInfo.Exists)
                     return null;
 
-                var knownBlob = GetCachedBlob(fileInfo);
-
-                if (null != knownBlob)
-                    return knownBlob;
-
                 BlobFingerprint fingerprint;
 
                 var sw = Stopwatch.StartNew();
@@ -395,7 +313,7 @@ namespace AwsSyncer
                 using (var s = new FileStream(fileInfo.FullName, FileMode.Open, FileSystemRights.Read, FileShare.Read,
                     8192, FileOptions.Asynchronous | FileOptions.SequentialScan))
                 {
-                    fingerprint = await fp.GetFingerprintAsync(s, _cancellationTokenSource.Token).ConfigureAwait(false);
+                    fingerprint = await fp.GetFingerprintAsync(s, cancellationToken).ConfigureAwait(false);
                 }
 
                 sw.Stop();
@@ -407,9 +325,16 @@ namespace AwsSyncer
 
                 var blob = new Blob(fileInfo.FullName, fileInfo.LastWriteTimeUtc, fingerprint, annotatedPath.Collection, annotatedPath.RelativePath);
 
-                AddFingerprint(blob);
+                fileInfo.Refresh();
 
-                _updateKnownBlobs.Enqueue(blob);
+                if (fileInfo.LastWriteTimeUtc != blob.LastModifiedUtc || fileInfo.Length != blob.Fingerprint.Size)
+                {
+                    Debug.WriteLine($"BlobManager.ProcessFileAsync() {annotatedPath.FileInfo.FullName} changed during scan");
+
+                    return null;
+                }
+
+                AddFingerprint(blob);
 
                 return blob;
             }
@@ -423,9 +348,11 @@ namespace AwsSyncer
         void AddFingerprint(IBlob blob)
         {
             ConcurrentBag<IBlob> blobs;
+
             while (!_knownFingerprints.TryGetValue(blob.Fingerprint, out blobs))
             {
                 blobs = new ConcurrentBag<IBlob>();
+
                 if (_knownFingerprints.TryAdd(blob.Fingerprint, blobs))
                     break;
             }
