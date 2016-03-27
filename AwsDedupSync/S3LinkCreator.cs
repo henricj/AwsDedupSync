@@ -21,7 +21,6 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Threading.Tasks.Dataflow;
@@ -38,11 +37,11 @@ namespace AwsDedupSync
             _s3Settings = s3Settings;
         }
 
-        public async Task UpdateLinksAsync(AwsManager awsManager, ILookup<string, string> livePaths, ISourceBlock<IBlob> linkBlobs, CancellationToken cancellationToken)
+        public async Task UpdateLinksAsync(AwsManager awsManager, ISourceBlock<IBlob> linkBlobs, CancellationToken cancellationToken)
         {
             try
             {
-                await CreateLinksAsync(awsManager, livePaths, linkBlobs, cancellationToken).ConfigureAwait(false);
+                await CreateLinksAsync(awsManager, linkBlobs, cancellationToken).ConfigureAwait(false);
 
                 Debug.WriteLine("Done processing links");
             }
@@ -52,8 +51,7 @@ namespace AwsDedupSync
             }
         }
 
-        async Task CreateLinksAsync(AwsManager awsManager, ILookup<string, string> linkPaths,
-            ISourceBlock<IBlob> blobSourceBlock, CancellationToken cancellationToken)
+        async Task CreateLinksAsync(AwsManager awsManager, ISourceBlock<IBlob> blobSourceBlock, CancellationToken cancellationToken)
         {
             var collectionBlocks = new Dictionary<string, ITargetBlock<IBlob>>();
             var tasks = new List<Task>();

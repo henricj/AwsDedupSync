@@ -114,19 +114,9 @@ namespace AwsDedupSync
 
                         if (S3Settings.UpdateLinks)
                         {
-                            var livePaths = namedPaths.Where(p => null != p.Name).Distinct().ToLookup(p => p.Name, p => p.Path);
+                            var updateLinksTask = _s3LinkCreator.UpdateLinksAsync(awsManager, linkBlobs, cancellationToken);
 
-                            if (livePaths.Count > 0)
-                            {
-                                var updateLinksTask = _s3LinkCreator.UpdateLinksAsync(awsManager, livePaths, linkBlobs, cancellationToken);
-
-                                tasks.Add(updateLinksTask);
-                            }
-                            else
-                            {
-                                // Can we even get here...?
-                                linkBlobs.LinkTo(DataflowBlock.NullTarget<IBlob>());
-                            }
+                            tasks.Add(updateLinksTask);
                         }
 
                         Task uploadBlobsTask = null;
