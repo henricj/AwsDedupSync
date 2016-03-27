@@ -163,7 +163,7 @@ namespace AwsDedupSync
             foreach (var fingerprintBlobs in blobManager.AllBlobs)
             {
                 // ReSharper disable once AccessToDisposedClosure
-                await awsManager.UpdateBlobPaths(fingerprintBlobs.Key, fingerprintBlobs.Value, cancellationToken).ConfigureAwait(false);
+                await awsManager.UpdateBlobPaths(fingerprintBlobs.Key, fingerprintBlobs.Value.Values, cancellationToken).ConfigureAwait(false);
             }
             //return Task.CompletedTask;
             //var allBlobs = new Dictionary<IBlobFingerprint, BlobFingerprintPaths>();

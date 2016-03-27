@@ -38,8 +38,8 @@ namespace AwsSyncer
         readonly BsonFilePathStore _blobPathStore = new BsonFilePathStore();
         readonly StreamFingerprinter _fingerprinter;
 
-        readonly ConcurrentDictionary<BlobFingerprint, ConcurrentBag<IBlob>> _knownFingerprints
-            = new ConcurrentDictionary<BlobFingerprint, ConcurrentBag<IBlob>>();
+        readonly ConcurrentDictionary<BlobFingerprint, ConcurrentDictionary<Tuple<string, string>, IBlob>> _knownFingerprints
+            = new ConcurrentDictionary<BlobFingerprint, ConcurrentDictionary<Tuple<string, string>, IBlob>>();
 
         IReadOnlyDictionary<string, IBlob> _previouslyCachedBlobs;
 
@@ -51,7 +51,7 @@ namespace AwsSyncer
             _fingerprinter = fingerprinter;
         }
 
-        public IReadOnlyDictionary<BlobFingerprint, ConcurrentBag<IBlob>> AllBlobs => _knownFingerprints;
+        public IReadOnlyDictionary<BlobFingerprint, ConcurrentDictionary<Tuple<string, string>, IBlob>> AllBlobs => _knownFingerprints;
 
         #region IDisposable Members
 
@@ -347,17 +347,19 @@ namespace AwsSyncer
 
         void AddFingerprint(IBlob blob)
         {
-            ConcurrentBag<IBlob> blobs;
+            var key = Tuple.Create(blob.Collection, blob.RelativePath);
+
+            ConcurrentDictionary<Tuple<string, string>, IBlob> blobs;
 
             while (!_knownFingerprints.TryGetValue(blob.Fingerprint, out blobs))
             {
-                blobs = new ConcurrentBag<IBlob>();
+                blobs = new ConcurrentDictionary<Tuple<string, string>, IBlob>();
 
                 if (_knownFingerprints.TryAdd(blob.Fingerprint, blobs))
                     break;
             }
 
-            blobs.Add(blob);
+            blobs[key] = blob;
         }
 
         class AnnotatedPath
