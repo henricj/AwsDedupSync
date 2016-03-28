@@ -21,45 +21,58 @@
 using System;
 using System.Configuration;
 using System.Diagnostics;
+using System.IO;
+using System.Text;
+using System.Threading;
+using AwsSyncer;
 
 namespace AwsDedupSync
 {
     static class Program
     {
+        static readonly Encoding Utf8NoBom = new UTF8Encoding(false);
+
         static void Main(string[] args)
         {
             //ServicePointManager.DefaultConnectionLimit = 20;
 
-            var bucket = ConfigurationManager.AppSettings["Bucket"];
-
-            if (string.IsNullOrWhiteSpace(bucket))
+            Console.Out.Close();
+            using (var writer = new StreamWriter(Console.OpenStandardOutput(), Utf8NoBom, 4 * 4096))
+            using (new Timer(_ => TaskCollector.Default.Add(Console.Out.FlushAsync(), "Console Flush"), null, 750, 750))
             {
-                Console.WriteLine("No bucket name found in the application settings");
-                return;
+                Console.SetOut(writer);
+
+                var bucket = ConfigurationManager.AppSettings["Bucket"];
+
+                if (string.IsNullOrWhiteSpace(bucket))
+                {
+                    Console.WriteLine("No bucket name found in the application settings");
+                    return;
+                }
+
+                var sw = new Stopwatch();
+
+                try
+                {
+                    var syncer = new S3PathSyncer();
+
+                    sw.Start();
+
+                    ConsoleCancel.RunAsync(ct => syncer.SyncPathsAsync(bucket, args, ct), TimeSpan.Zero).Wait();
+
+                    sw.Stop();
+                }
+                catch (Exception ex)
+                {
+                    sw.Stop();
+
+                    Console.WriteLine(ex.Message);
+                }
+
+                var process = Process.GetCurrentProcess();
+
+                Console.WriteLine("Elapsed: {0} CPU {1} User {2}", sw.Elapsed, process.TotalProcessorTime, process.UserProcessorTime);
             }
-
-            var sw = new Stopwatch();
-
-            try
-            {
-                var syncer = new S3PathSyncer();
-
-                sw.Start();
-
-                ConsoleCancel.RunAsync(ct => syncer.SyncPathsAsync(bucket, args, ct), TimeSpan.Zero).Wait();
-
-                sw.Stop();
-            }
-            catch (Exception ex)
-            {
-                sw.Stop();
-
-                Console.WriteLine(ex.Message);
-            }
-
-            var process = Process.GetCurrentProcess();
-
-            Console.WriteLine("Elapsed: {0} CPU {1} User {2}", sw.Elapsed, process.TotalProcessorTime, process.UserProcessorTime);
         }
     }
 }

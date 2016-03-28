@@ -22,6 +22,7 @@ using System;
 using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
+using AwsSyncer;
 
 namespace AwsDedupSync
 {
@@ -34,6 +35,7 @@ namespace AwsDedupSync
             var cts = timeout > TimeSpan.Zero ? new CancellationTokenSource(timeout) : new CancellationTokenSource();
 
             Console.WriteLine("Press enter to cancel");
+            await Console.Out.FlushAsync().ConfigureAwait(false);
 
             try
             {
@@ -44,9 +46,12 @@ namespace AwsDedupSync
 
                 var anyTask = await Task.WhenAny(readTask, runTask).ConfigureAwait(false);
 
+                TaskCollector.Default.Add(anyTask, "ConsoleCancel");
+
                 if (!runTask.IsCompleted)
                 {
                     Console.WriteLine("Cancel requested");
+                    await Console.Out.FlushAsync().ConfigureAwait(false);
                     cts.Cancel();
                 }
 
@@ -67,6 +72,7 @@ namespace AwsDedupSync
             }
 
             Console.WriteLine("Done ({0}) {1}", cts.Token.IsCancellationRequested ? "cancelled" : "not cancelled", sw.Elapsed);
+            await Console.Out.FlushAsync().ConfigureAwait(false);
         }
     }
 }
