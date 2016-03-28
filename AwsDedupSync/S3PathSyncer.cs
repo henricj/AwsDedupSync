@@ -20,7 +20,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Threading;
@@ -57,64 +56,32 @@ namespace AwsDedupSync
                               let validSplit = split > 0 && split < arg.Length - 1
                               select new CollectionPath
                               {
-                                  Name = validSplit ? arg.Substring(0, split) : null,
+                                  Collection = validSplit ? arg.Substring(0, split) : null,
                                   Path = PathUtil.ForceTrailingSlash(Path.GetFullPath(validSplit ? arg.Substring(split + 1) : arg))
                               })
                 .Distinct()
                 .ToArray();
 
-            using (var blobManager = new BlobManager(new StreamFingerprinter()))
+            using (var blobManager = new BlobManager(new FileFingerprintManager(new StreamFingerprinter())))
             {
                 try
                 {
                     using (var awsManager = AwsManagerFactory.Create(bucket))
                     {
-                        var uniqueFingerprintBlock = new BufferBlock<IBlob>();
-                        var linkBlobs = new BufferBlock<IBlob>();
+                        var uniqueFingerprintBlock = new BufferBlock<Tuple<IFileFingerprint, AnnotatedPath>>();
+                        var linkBlock = new BufferBlock<Tuple<AnnotatedPath, IFileFingerprint>>();
 
-                        var blobBroadcastBlock = new BroadcastBlock<IBlob>(b => b);
-
-                        if (S3Settings.UploadBlobs)
-                        {
-                            var knownFingerprints = new HashSet<BlobFingerprint>();
-
-                            var uploadBlock = new ActionBlock<IBlob>(
-                                async blob =>
-                                {
-                                    if (knownFingerprints.Add(blob.Fingerprint))
-                                    {
-                                        //Debug.WriteLine(string.Format("Queueing {0} for upload", blob.FullFilePath));
-                                        await uniqueFingerprintBlock.SendAsync(blob, cancellationToken).ConfigureAwait(false);
-                                    }
-                                    //else
-                                    //    Debug.WriteLine(string.Format("Skipping {0} for upload", blob.FullFilePath));
-                                });
-
-                            blobBroadcastBlock.LinkTo(uploadBlock, DataflowLinkOptionsPropagateEnabled);
-                        }
-
-                        if (S3Settings.UpdateLinks)
-                            blobBroadcastBlock.LinkTo(linkBlobs, DataflowLinkOptionsPropagateEnabled);
-
-                        // Make sure we have at least one block consuming blobs.
-                        if (!S3Settings.UploadBlobs && !S3Settings.UpdateLinks)
-                            blobBroadcastBlock.LinkTo(DataflowBlock.NullTarget<IBlob>());
+                        ActionBlock<IFileFingerprint> fileFingerprintTargetBlock = null;
 
                         var tasks = new List<Task>();
 
-                        tasks.Add(blobBroadcastBlock.Completion);
-
-#if DEBUG
-                        var dontWaitTask = blobBroadcastBlock.Completion.ContinueWith(_ => { Debug.WriteLine("S3PathSyncer.SyncPathsAsync() blobBroadcastBlock completed"); });
-#endif
-
-                        var loadBlobTask = blobManager.LoadAsync(namedPaths, blobBroadcastBlock, cancellationToken);
+                        var loadBlobTask = blobManager.LoadAsync(namedPaths, uniqueFingerprintBlock, linkBlock, cancellationToken);
 
                         tasks.Add(loadBlobTask);
 
                         if (S3Settings.UpdateLinks)
                         {
-                            var updateLinksTask = _s3LinkCreator.UpdateLinksAsync(awsManager, linkBlobs, cancellationToken);
+                            var updateLinksTask = _s3LinkCreator.UpdateLinksAsync(awsManager, linkBlock, cancellationToken);
 
                             tasks.Add(updateLinksTask);
                         }
@@ -130,13 +97,13 @@ namespace AwsDedupSync
                                 // ReSharper disable once AccessToDisposedClosure
                                 uploadBlobsTask = _s3BlobUploader.UploadBlobsAsync(awsManager, uniqueFingerprintBlock, knownObjects, cancellationToken);
                             }
-                        });
+                        }, cancellationToken);
 
                         tasks.Add(scanBlobAsync);
 
-                        if (S3Settings.UpdateMeta)
+                        if (S3Settings.UpdateMeta && null != fileFingerprintTargetBlock)
                         {
-                            var updateMetaTask = UpdateMetaAsync(awsManager, blobManager, blobBroadcastBlock.Completion, cancellationToken);
+                            var updateMetaTask = UpdateMetaAsync(awsManager, blobManager, fileFingerprintTargetBlock.Completion, cancellationToken);
 
                             tasks.Add(updateMetaTask);
                         }
