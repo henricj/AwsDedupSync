@@ -91,4 +91,17 @@ namespace AwsSyncer
 
         #endregion // Object
     }
+
+    public static class BlobFingerprintExtensions
+    {
+        public static string Key(this BlobFingerprint fingerprint)
+        {
+            return S3Util.S3EncodeKey(fingerprint.Sha3_512);
+        }
+
+        public static string S3ETag(this BlobFingerprint fingerprint)
+        {
+            return S3Util.ComputeS3Etag(fingerprint.Md5);
+        }
+    }
 }

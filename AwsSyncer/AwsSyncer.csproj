@@ -87,7 +87,7 @@
   <ItemGroup>
     <Compile Include="AsyncLock.cs" />
     <Compile Include="Blob.cs" />
-    <Compile Include="BlobInformation.cs" />
+    <Compile Include="BlobFingerprint.cs" />
     <Compile Include="BlobManager.cs" />
     <Compile Include="CollectionPath.cs" />
     <Compile Include="BsonFilePathStore.cs" />
@@ -106,6 +106,7 @@
     <Compile Include="S3Links.cs" />
     <Compile Include="AwsManager.cs" />
     <Compile Include="AwsManagerFactory.cs" />
+    <Compile Include="S3Util.cs" />
     <Compile Include="SizeConversion.cs" />
     <Compile Include="StreamFingerprinter.cs" />
     <Compile Include="TaskCollector.cs" />
