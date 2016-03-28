@@ -91,6 +91,7 @@
     <Compile Include="BlobManager.cs" />
     <Compile Include="CollectionPath.cs" />
     <Compile Include="BsonFileFingerprintStore.cs" />
+    <Compile Include="DirectoryScanner.cs" />
     <Compile Include="DynamoDbPathStore.cs" />
     <Compile Include="DBreezePathStore.cs" />
     <Compile Include="FileFingerprint.cs" />
