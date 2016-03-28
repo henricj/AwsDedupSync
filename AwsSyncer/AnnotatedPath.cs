@@ -18,16 +18,20 @@
 // FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
+using System.IO;
+
 namespace AwsSyncer
 {
-    public class CollectionPath
+    public class AnnotatedPath
     {
+        public FileInfo FileInfo { get; set; }
         public string Collection { get; set; }
-        public string Path { get; set; }
+        public string RelativePath { get; set; }
+
 
         public override string ToString()
         {
-            return '[' + Collection + ']' + Path;
+            return '[' + Collection + ']' + RelativePath;
         }
     }
 }

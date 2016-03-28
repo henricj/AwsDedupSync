@@ -85,6 +85,7 @@
     <Reference Include="Microsoft.CSharp" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="AnnotatedPath.cs" />
     <Compile Include="AsyncLock.cs" />
     <Compile Include="Blob.cs" />
     <Compile Include="BlobFingerprint.cs" />
