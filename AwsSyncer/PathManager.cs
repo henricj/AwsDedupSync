@@ -29,7 +29,7 @@ namespace AwsSyncer
         string BlobPrefix { get; }
         string TreePrefix { get; }
 
-        string GetBlobPath(IBlob blob);
+        string GetBlobPath(IFileFingerprint fileFingerprint);
         string GetKeyFromBlobPath(string blobPath);
 
         Uri GetBlobUrl(IBlob blob);
@@ -97,9 +97,9 @@ namespace AwsSyncer
         public string Bucket { get; }
         public Uri AwsS3Url { get; }
 
-        public string GetBlobPath(IBlob blob)
+        public string GetBlobPath(IFileFingerprint fileFingerprint)
         {
-            return BlobPrefix + blob.Key;
+            return BlobPrefix + fileFingerprint.Fingerprint.Key();
         }
 
         public string GetKeyFromBlobPath(string blobPath)

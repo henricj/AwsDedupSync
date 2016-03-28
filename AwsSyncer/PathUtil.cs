@@ -127,5 +127,12 @@ namespace AwsSyncer
 
             Debug.WriteLine($"PathUtil.ScanDirectory({path}) after {timer.Elapsed}");
         }
+
+        public static string GetHost(string path)
+        {
+            var uri = new Uri(path, UriKind.RelativeOrAbsolute);
+
+            return uri.IsAbsoluteUri ? uri.Host : string.Empty;
+        }
     }
 }

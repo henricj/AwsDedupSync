@@ -23,19 +23,16 @@ using System.Web;
 
 namespace AwsSyncer
 {
-    public interface IBlob : IEquatable<IBlob>
+    public interface IBlob : IFileFingerprint, IEquatable<IBlob>
     {
-        string FullFilePath { get; }
         string Collection { get; }
         string RelativePath { get; }
-        DateTime LastModifiedUtc { get; }
-        BlobFingerprint Fingerprint { get; }
         string Key { get; }
     }
 
     public class Blob : IBlob
     {
-        public Blob(string fullFilePath, DateTime lastModifiedUtc, BlobFingerprint fingerprint, string collection, string relativePath)
+        public Blob(string fullFilePath, DateTime lastModifiedUtc, BlobFingerprint fingerprint, string collection, string relativePath, bool wasCached = false)
         {
             if (string.IsNullOrWhiteSpace(fullFilePath))
                 throw new ArgumentNullException(nameof(fullFilePath));
@@ -54,8 +51,9 @@ namespace AwsSyncer
             Fingerprint = fingerprint;
             Collection = collection;
             RelativePath = relativePath;
+            WasCached = wasCached;
             LastModifiedUtc = lastModifiedUtc;
-            Key = HttpServerUtility.UrlTokenEncode(fingerprint.Sha3_512);
+            Key = fingerprint.Key();
         }
 
         #region IBlob Members
@@ -63,6 +61,7 @@ namespace AwsSyncer
         public string FullFilePath { get; }
         public string Collection { get; }
         public string RelativePath { get; }
+        public bool WasCached { get; }
         public DateTime LastModifiedUtc { get; }
         public BlobFingerprint Fingerprint { get; }
         public string Key { get; }
