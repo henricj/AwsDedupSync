@@ -32,8 +32,6 @@ namespace AwsSyncer
         string GetBlobPath(IFileFingerprint fileFingerprint);
         string GetKeyFromBlobPath(string blobPath);
 
-        Uri GetBlobUrl(IBlob blob);
-
         string GetTreeNamePrefix(string name);
         string GetTreeNamePath(string name, string key);
         string GetKeyFromTreeNamePath(string name, string treeNamePath);
@@ -41,8 +39,8 @@ namespace AwsSyncer
 
     public class PathManager : IPathManager
     {
-        string _blobPrefix = "b/";
         readonly Uri _bucketUrl;
+        string _blobPrefix = "b/";
         string _treePrefix = "t/";
 
         public PathManager(Uri awsS3Url, string bucket)
@@ -117,11 +115,6 @@ namespace AwsSyncer
             PathUtil.RequireNormalizedAsciiName(key);
 
             return key;
-        }
-
-        public Uri GetBlobUrl(IBlob blob)
-        {
-            return new Uri(_bucketUrl, '/' + GetBlobPath(blob));
         }
 
         public string GetTreeNamePrefix(string name)

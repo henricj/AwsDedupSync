@@ -32,9 +32,6 @@ namespace AwsSyncer
     {
         readonly FileFingerprintManager _fileFingerprintManager;
 
-        readonly ConcurrentDictionary<BlobFingerprint, ConcurrentDictionary<Tuple<string, string>, IBlob>> _knownFingerprints
-            = new ConcurrentDictionary<BlobFingerprint, ConcurrentDictionary<Tuple<string, string>, IBlob>>();
-
         public BlobManager(FileFingerprintManager fileFingerprintManager)
         {
             if (null == fileFingerprintManager)
@@ -42,8 +39,6 @@ namespace AwsSyncer
 
             _fileFingerprintManager = fileFingerprintManager;
         }
-
-        public IReadOnlyDictionary<BlobFingerprint, ConcurrentDictionary<Tuple<string, string>, IBlob>> AllBlobs => _knownFingerprints;
 
         #region IDisposable Members
 

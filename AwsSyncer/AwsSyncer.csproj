@@ -54,16 +54,8 @@
       <HintPath>..\packages\AWSSDK.Core.3.1.5.1\lib\net45\AWSSDK.Core.dll</HintPath>
       <Private>True</Private>
     </Reference>
-    <Reference Include="AWSSDK.DynamoDBv2, Version=3.1.0.0, Culture=neutral, PublicKeyToken=885c28607f98e604, processorArchitecture=MSIL">
-      <HintPath>..\packages\AWSSDK.DynamoDBv2.3.1.3.0\lib\net45\AWSSDK.DynamoDBv2.dll</HintPath>
-      <Private>True</Private>
-    </Reference>
     <Reference Include="AWSSDK.S3, Version=3.1.0.0, Culture=neutral, PublicKeyToken=885c28607f98e604, processorArchitecture=MSIL">
       <HintPath>..\packages\AWSSDK.S3.3.1.4.0\lib\net45\AWSSDK.S3.dll</HintPath>
-      <Private>True</Private>
-    </Reference>
-    <Reference Include="DBreeze, Version=1.73.2016.108, Culture=neutral, PublicKeyToken=174b57f1c155f3c6, processorArchitecture=MSIL">
-      <HintPath>..\packages\DBreeze.1.73.2\lib\net45\DBreeze.dll</HintPath>
       <Private>True</Private>
     </Reference>
     <Reference Include="Newtonsoft.Json, Version=8.0.0.0, Culture=neutral, PublicKeyToken=30ad4fe6b2a6aeed, processorArchitecture=MSIL">
@@ -87,14 +79,11 @@
   <ItemGroup>
     <Compile Include="AnnotatedPath.cs" />
     <Compile Include="AsyncLock.cs" />
-    <Compile Include="Blob.cs" />
     <Compile Include="BlobFingerprint.cs" />
     <Compile Include="BlobManager.cs" />
     <Compile Include="CollectionPath.cs" />
     <Compile Include="BsonFileFingerprintStore.cs" />
     <Compile Include="DirectoryScanner.cs" />
-    <Compile Include="DynamoDbPathStore.cs" />
-    <Compile Include="DBreezePathStore.cs" />
     <Compile Include="FileFingerprint.cs" />
     <Compile Include="FileFingerprintManager.cs" />
     <Compile Include="FileSequence.cs" />
@@ -130,7 +119,6 @@
     </ProjectReference>
   </ItemGroup>
   <ItemGroup>
-    <Analyzer Include="..\packages\AWSSDK.DynamoDBv2.3.1.3.0\analyzers\dotnet\cs\AWSSDK.DynamoDBv2.CodeAnalysis.dll" />
     <Analyzer Include="..\packages\AWSSDK.S3.3.1.4.0\analyzers\dotnet\cs\AWSSDK.S3.CodeAnalysis.dll" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />

@@ -71,8 +71,6 @@ namespace AwsDedupSync
                         var uniqueFingerprintBlock = new BufferBlock<Tuple<IFileFingerprint, AnnotatedPath>>();
                         var linkBlock = new BufferBlock<Tuple<AnnotatedPath, IFileFingerprint>>();
 
-                        ActionBlock<IFileFingerprint> fileFingerprintTargetBlock = null;
-
                         var tasks = new List<Task>();
 
                         var loadBlobTask = blobManager.LoadAsync(namedPaths, uniqueFingerprintBlock, linkBlock, cancellationToken);
@@ -101,13 +99,6 @@ namespace AwsDedupSync
 
                         tasks.Add(scanBlobAsync);
 
-                        if (S3Settings.UpdateMeta && null != fileFingerprintTargetBlock)
-                        {
-                            var updateMetaTask = UpdateMetaAsync(awsManager, blobManager, fileFingerprintTargetBlock.Completion, cancellationToken);
-
-                            tasks.Add(updateMetaTask);
-                        }
-
                         await WaitAllWithWake(tasks).ConfigureAwait(false);
 
                         uniqueFingerprintBlock.Complete();
@@ -121,30 +112,6 @@ namespace AwsDedupSync
                     await blobManager.ShutdownAsync(cancellationToken).ConfigureAwait(false);
                 }
             }
-        }
-
-        async Task UpdateMetaAsync(AwsManager awsManager, BlobManager blobManager, Task allBlobsCreatedTask, CancellationToken cancellationToken)
-        {
-            await allBlobsCreatedTask.ConfigureAwait(false);
-
-            foreach (var fingerprintBlobs in blobManager.AllBlobs)
-            {
-                // ReSharper disable once AccessToDisposedClosure
-                await awsManager.UpdateBlobPaths(fingerprintBlobs.Key, fingerprintBlobs.Value.Values, cancellationToken).ConfigureAwait(false);
-            }
-            //return Task.CompletedTask;
-            //var allBlobs = new Dictionary<IBlobFingerprint, BlobFingerprintPaths>();
-
-            //var captureAllBlock = new ActionBlock<IBlob>(blob =>
-            //{
-            //    BlobFingerprintPaths blobFingerprintPaths;
-            //    if (!allBlobs.TryGetValue(blob.Fingerprint, out blobFingerprintPaths))
-            //    {
-            //        blobFingerprintPaths = new BlobFingerprintPaths(blob.Fingerprint);
-            //    }
-
-            //    blobFingerprintPaths.Add();
-            //});
         }
 
         static async Task WaitAllWithWake(ICollection<Task> tasks)

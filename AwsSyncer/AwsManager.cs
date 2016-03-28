@@ -115,10 +115,5 @@ namespace AwsSyncer
         {
             return _s3Links.CreateLinkAsync(createLinkRequest, cancellationToken);
         }
-
-        public Task UpdateBlobPaths(BlobFingerprint fingerprint, ICollection<IBlob> blobs, CancellationToken cancellationToken)
-        {
-            return Task.CompletedTask;
-        }
     }
 }
