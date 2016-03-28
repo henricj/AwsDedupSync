@@ -20,8 +20,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
-using System.Net;
 using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
@@ -31,29 +29,26 @@ using Amazon.S3.Model;
 
 namespace AwsSyncer
 {
-    public sealed class S3Links
+    public sealed class S3Links : S3PutBase
     {
-        readonly IAmazonS3 _amazon;
         readonly IPathManager _pathManager;
         readonly S3StorageClass _s3StorageClass;
 
-        public S3Links(IAmazonS3 amazon, IPathManager pathManager, S3StorageClass s3StorageClass)
+        public S3Links(IAmazonS3 amazonS3, IPathManager pathManager, S3StorageClass s3StorageClass)
+            : base(amazonS3)
         {
-            if (null == amazon)
-                throw new ArgumentNullException(nameof(amazon));
             if (null == pathManager)
                 throw new ArgumentNullException(nameof(pathManager));
             if (null == s3StorageClass)
                 throw new ArgumentNullException(nameof(s3StorageClass));
 
-            _amazon = amazon;
             _pathManager = pathManager;
             _s3StorageClass = s3StorageClass;
         }
 
-        public async Task<ICollection<string>> ListAsync(string name, CancellationToken cancellationToken)
+        public async Task<IReadOnlyDictionary<string, string>> ListAsync(string name, CancellationToken cancellationToken)
         {
-            var files = new HashSet<string>();
+            var files = new Dictionary<string, string>();
 
             var request = new ListObjectsRequest
             {
@@ -63,13 +58,13 @@ namespace AwsSyncer
 
             for (;;)
             {
-                var response = await _amazon.ListObjectsAsync(request, cancellationToken).ConfigureAwait(false);
+                var response = await AmazonS3.ListObjectsAsync(request, cancellationToken).ConfigureAwait(false);
 
-                foreach (var x in response.S3Objects)
+                foreach (var s3Object in response.S3Objects)
                 {
-                    var key = _pathManager.GetKeyFromTreeNamePath(name, x.Key);
+                    var key = _pathManager.GetKeyFromTreeNamePath(name, s3Object.Key);
 
-                    files.Add(key);
+                    files[key] = s3Object.ETag;
                 }
 
                 if (!response.IsTruncated)
@@ -79,37 +74,83 @@ namespace AwsSyncer
             }
         }
 
-        public async Task CreateLinkAsync(string name, string path, IBlob blob, CancellationToken cancellationToken)
+        public ICreateLinkRequest BuildCreateLinkRequest(string collection, string relativePath, IFileFingerprint fileFingerprint, string existingETag)
         {
-            var treeKey = _pathManager.GetTreeNamePath(name, path);
-            var link = '/' + _pathManager.GetBlobPath(blob);
+            var link = '/' + _pathManager.GetBlobPath(fileFingerprint);
 
-            string md5Digest;
+            byte[] md5Digest;
 
             using (var md5 = MD5.Create())
             {
-                md5Digest = Convert.ToBase64String(md5.ComputeHash(Encoding.UTF8.GetBytes(link)));
+                md5Digest = md5.ComputeHash(Encoding.UTF8.GetBytes(link));
             }
+
+            var etag = S3Util.ComputeS3Etag(md5Digest);
+
+            if (!string.IsNullOrEmpty(existingETag))
+            {
+                var match = string.Equals(etag, existingETag, StringComparison.CurrentCultureIgnoreCase);
+
+                if (match)
+                {
+                    //Debug.WriteLine($"{collection} \"{relativePath}\" already exists and equals {link}");
+
+                    return null;
+                }
+            }
+
+            var md5DigestString = Convert.ToBase64String(md5Digest);
+
+            var treeKey = _pathManager.GetTreeNamePath(collection, relativePath);
 
             var request = new PutObjectRequest
             {
                 BucketName = _pathManager.Bucket,
                 ContentBody = link,
                 Key = treeKey,
-                MD5Digest = md5Digest,
+                MD5Digest = md5DigestString,
                 WebsiteRedirectLocation = link,
-                ContentType = MimeDetector.Default.GetMimeType(blob.FullFilePath),
+                ContentType = MimeDetector.Default.GetMimeType(fileFingerprint.FullFilePath),
                 StorageClass = _s3StorageClass,
                 Headers =
                 {
-                    ["x-amz-meta-lastModified"] = blob.LastModifiedUtc.ToString("O")
+                    ["x-amz-meta-lastModified"] = fileFingerprint.LastModifiedUtc.ToString("O")
                 }
             };
 
-            var response = await _amazon.PutObjectAsync(request, cancellationToken).ConfigureAwait(false);
+            return new CreateLinkRequest
+            {
+                Collection = collection,
+                RelativePath = relativePath,
+                BlobLink = link,
+                FileFingerprint = fileFingerprint,
+                Request = request,
+                ETag = etag
+            };
+        }
 
-            if (response.HttpStatusCode != HttpStatusCode.OK)
-                Debug.WriteLine("now what?");
+        public async Task CreateLinkAsync(ICreateLinkRequest createLinkRequest, CancellationToken cancellationToken)
+        {
+            var request = (S3PutRequest)createLinkRequest;
+
+            await PutAsync(request, cancellationToken);
+        }
+
+        public interface ICreateLinkRequest
+        {
+            string Collection { get; }
+            string RelativePath { get; }
+            string BlobLink { get; }
+            string ETag { get; }
+            IFileFingerprint FileFingerprint { get; }
+        }
+
+        class CreateLinkRequest : S3PutRequest, ICreateLinkRequest
+        {
+            public string Collection { get; set; }
+            public string RelativePath { get; set; }
+            public string BlobLink { get; set; }
+            public IFileFingerprint FileFingerprint { get; set; }
         }
     }
 }

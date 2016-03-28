@@ -22,7 +22,6 @@ using System;
 using System.Collections.Generic;
 using System.Configuration;
 using System.Diagnostics;
-using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Amazon.S3;
@@ -77,28 +76,44 @@ namespace AwsSyncer
 
         #endregion
 
-        public async Task<IReadOnlyDictionary<string, long>> ScanAsync(CancellationToken cancellationToken)
+        public async Task<IReadOnlyDictionary<string, string>> ScanAsync(CancellationToken cancellationToken)
         {
-            var s3Blobs = await _s3Blobs.ListAsync(cancellationToken).ConfigureAwait(false);
+            var statistics = new S3Blobs.Statistics();
 
-            Trace.WriteLine($"Bucket {_pathManager.Bucket} contains {s3Blobs.Count} items {SizeConversion.BytesToGiB(s3Blobs.Values.Sum()):F2}GiB");
+            var sw = Stopwatch.StartNew();
+
+            var s3Blobs = await _s3Blobs.ListAsync(statistics, cancellationToken).ConfigureAwait(false);
+
+            sw.Stop();
+
+            Console.WriteLine($"Bucket {_pathManager.Bucket} contains {s3Blobs.Count}/{statistics.Count} items {SizeConversion.BytesToGiB(statistics.TotalSize):F2}GiB in {sw.Elapsed}");
 
             return s3Blobs;
         }
 
-        public Task<string> StoreAsync(IBlob blob, CancellationToken cancellationToken)
+        public S3Blobs.IUploadBlobRequest BuildUploadBlobRequest(Tuple<IFileFingerprint, AnnotatedPath> tuple)
         {
-            return _s3Blobs.StoreAsync(blob, cancellationToken);
+            return _s3Blobs.BuildUploadBlobRequest(tuple);
         }
 
-        public Task<ICollection<string>> GetLinksAsync(string name, CancellationToken cancellationToken)
+        public Task UploadBlobAsync(S3Blobs.IUploadBlobRequest uploadBlobRequest, CancellationToken cancellationToken)
+        {
+            return _s3Blobs.UploadBlobAsync(uploadBlobRequest, cancellationToken);
+        }
+
+        public Task<IReadOnlyDictionary<string, string>> GetLinksAsync(string name, CancellationToken cancellationToken)
         {
             return _s3Links.ListAsync(name, cancellationToken);
         }
 
-        public Task CreateLinkAsync(string name, string path, IBlob blob, CancellationToken cancellationToken)
+        public S3Links.ICreateLinkRequest BuildLinkRequest(string collection, string relativePath, IFileFingerprint fileFingerprint, string existingETag = null)
         {
-            return _s3Links.CreateLinkAsync(name, path, blob, cancellationToken);
+            return _s3Links.BuildCreateLinkRequest(collection, relativePath, fileFingerprint, existingETag);
+        }
+
+        public Task CreateLinkAsync(S3Links.ICreateLinkRequest createLinkRequest, CancellationToken cancellationToken)
+        {
+            return _s3Links.CreateLinkAsync(createLinkRequest, cancellationToken);
         }
 
         public Task UpdateBlobPaths(BlobFingerprint fingerprint, ICollection<IBlob> blobs, CancellationToken cancellationToken)
