@@ -31,10 +31,10 @@ using SevenZip;
 
 namespace AwsSyncer
 {
-    public sealed class BsonFilePathStore : IDisposable
+    public sealed class BsonFileFingerprintStore : IDisposable
     {
         static readonly DirectoryInfo BsonDirectory = GetBsonDirectory();
-        static readonly JsonConverter DateTimeConverter = new MsTicksDateTimeJsonConverter();
+        static readonly Dictionary<string, IFileFingerprint> EmptyFileFingerprints = new Dictionary<string, IFileFingerprint>();
         readonly FileSequence _fileSequence;
         readonly AsyncLock _lock = new AsyncLock();
         Stream _bsonFile;
@@ -42,13 +42,13 @@ namespace AwsSyncer
         BsonWriter _jsonWriter;
         LzmaEncodeStream _lzmaEncodeStream;
 
-        public BsonFilePathStore()
+        public BsonFileFingerprintStore()
         {
             _fileSequence = new FileSequence(BsonDirectory);
         }
 
-        public int BlobUpdateCount { get; private set; }
-        public long BlobUpdateSize { get; private set; }
+        public int UpdateCount { get; private set; }
+        public long UpdateSize { get; private set; }
 
         public void Dispose()
         {
@@ -66,8 +66,9 @@ namespace AwsSyncer
 
         static Stream OpenBsonFileForRead(FileInfo fi)
         {
-            return new FileStream(fi.FullName, FileMode.Open, FileAccess.Read,
-                FileShare.Read, 8192, FileOptions.SequentialScan);
+            return new FileStream(fi.FullName, FileMode.Open,
+                FileAccess.Read, FileShare.Read,
+                8192, FileOptions.SequentialScan);
         }
 
         static Stream OpenBsonFileForWrite(FileInfo fi)
@@ -95,12 +96,7 @@ namespace AwsSyncer
             return new DirectoryInfo(path);
         }
 
-        static JsonSerializer CreateSerializer()
-        {
-            return new JsonSerializer { Converters = { DateTimeConverter } };
-        }
-
-        public async Task<IReadOnlyDictionary<string, IBlob>> LoadBlobsAsync(CancellationToken cancellationToken)
+        public async Task<IReadOnlyDictionary<string, IFileFingerprint>> LoadBlobsAsync(CancellationToken cancellationToken)
         {
             try
             {
@@ -118,17 +114,17 @@ namespace AwsSyncer
 
             try
             {
-                RebuildCache(new Dictionary<string, IBlob>());
+                RebuildCache(EmptyFileFingerprints);
             }
             catch (IOException ex)
             {
                 Console.WriteLine("LoadBlobsAsync() delete failed: " + ex.Message);
             }
 
-            return new Dictionary<string, IBlob>();
+            return EmptyFileFingerprints;
         }
 
-        async Task<IReadOnlyDictionary<string, IBlob>> LoadBlobCacheRetryAsync(CancellationToken cancellationToken)
+        async Task<IReadOnlyDictionary<string, IFileFingerprint>> LoadBlobCacheRetryAsync(CancellationToken cancellationToken)
         {
             var delay = 3.0;
 
@@ -160,11 +156,9 @@ namespace AwsSyncer
             return null;
         }
 
-        IReadOnlyDictionary<string, IBlob> LoadBlobsImpl(CancellationToken cancellationToken)
+        IReadOnlyDictionary<string, IFileFingerprint> LoadBlobsImpl(CancellationToken cancellationToken)
         {
-            var blobs = new Dictionary<string, IBlob>();
-
-            var serializer = CreateSerializer();
+            var blobs = new Dictionary<string, IFileFingerprint>();
 
             var needRebuild = false;
 
@@ -191,12 +185,18 @@ namespace AwsSyncer
 
                             try
                             {
-                                var blob = serializer.Deserialize<Blob>(br);
+                                var fileFingerprint = ReadFileFingerprint(br);
 
-                                if (blobs.ContainsKey(blob.FullFilePath))
-                                    Debug.WriteLine($"Collision for {blob.FullFilePath}");
+                                if (null == fileFingerprint)
+                                {
+                                    needRebuild = true;
+                                    break;
+                                }
 
-                                blobs[blob.FullFilePath] = blob;
+                                if (blobs.ContainsKey(fileFingerprint.FullFilePath))
+                                    Debug.WriteLine($"Collision for {fileFingerprint.FullFilePath}");
+
+                                blobs[fileFingerprint.FullFilePath] = fileFingerprint;
 
                                 ++blobCount;
                             }
@@ -205,7 +205,7 @@ namespace AwsSyncer
                                 needRebuild = true;
 
                                 // The entry might or might not be valid.
-                                Debug.WriteLine("BsonFilePathStore.LoadBlobsImpl() read failed: " + ex.Message);
+                                Debug.WriteLine("BsonFileFingerprintStore.LoadBlobsImpl() read failed: " + ex.Message);
                             }
                         }
                     }
@@ -237,7 +237,91 @@ namespace AwsSyncer
             return blobs;
         }
 
-        void RebuildCache(Dictionary<string, IBlob> blobs)
+        IFileFingerprint ReadFileFingerprint(JsonReader reader)
+        {
+            if (JsonToken.StartObject != reader.TokenType)
+                throw new JsonReaderException("State not object");
+
+            string path = null;
+            DateTime? modified = null;
+            long? size = null;
+            byte[] md5 = null;
+            byte[] sha256 = null;
+            byte[] sha3_512 = null;
+
+            while (reader.Read())
+            {
+                if (reader.TokenType == JsonToken.EndObject)
+                {
+                    if (null == path || !modified.HasValue || !size.HasValue ||
+                        null == md5 || null == sha256 || null == sha3_512)
+                        throw new JsonReaderException("Missing required property");
+
+                    var fingerprint = new BlobFingerprint(size.Value, sha3_512, sha256, md5);
+
+                    return new FileFingerprint(path, modified.Value, fingerprint, true);
+                }
+
+                if (reader.TokenType != JsonToken.PropertyName)
+                    throw new JsonReaderException("Missing property name");
+
+                var name = (string)reader.Value;
+
+                if (!reader.Read())
+                    throw new JsonReaderException("Missing property value for " + name);
+
+                switch (name)
+                {
+                    case "path":
+                        path = (string)reader.Value;
+                        break;
+                    case "modified":
+                        modified = DateTime.FromBinary((long)reader.Value);
+                        break;
+                    case "size":
+                        size = (long)reader.Value;
+                        break;
+                    case "sha256":
+                        sha256 = (byte[])reader.Value;
+                        break;
+                    case "md5":
+                        md5 = (byte[])reader.Value;
+                        break;
+                    case "sha3_512":
+                        sha3_512 = (byte[])reader.Value;
+                        break;
+                }
+            }
+
+            return null;
+        }
+
+        void WriteFileFingerprint(JsonWriter writer, IFileFingerprint blob)
+        {
+            if (writer.WriteState != WriteState.Start)
+                throw new JsonWriterException("State not closed");
+
+            writer.WriteStartObject();
+
+            writer.WritePropertyName("path");
+            writer.WriteValue(blob.FullFilePath);
+            writer.WritePropertyName("modified");
+            writer.WriteValue(blob.LastModifiedUtc.ToBinary());
+
+            var fingerprint = blob.Fingerprint;
+            writer.WritePropertyName("size");
+            writer.WriteValue(fingerprint.Size);
+            writer.WritePropertyName("sha256");
+            writer.WriteValue(fingerprint.Sha2_256);
+            writer.WritePropertyName("md5");
+            writer.WriteValue(fingerprint.Md5);
+            writer.WritePropertyName("sha3_512");
+            writer.WriteValue(fingerprint.Sha3_512);
+
+            writer.WriteEndObject();
+        }
+
+        void RebuildCache(Dictionary<string, IFileFingerprint> blobs)
         {
             FileInfo tempFileInfo = null;
             var allOk = false;
@@ -287,21 +371,21 @@ namespace AwsSyncer
             }
         }
 
-        void StoreBlobsImpl(ICollection<IBlob> blobs, CancellationToken cancellationToken)
+        void StoreBlobsImpl(ICollection<IFileFingerprint> fileFingerprints, CancellationToken cancellationToken)
         {
             OpenWriter();
 
-            var serializer = CreateSerializer();
+            //var serializer = CreateSerializer();
 
-            foreach (var blob in blobs)
+            foreach (var blob in fileFingerprints)
             {
                 if (cancellationToken.IsCancellationRequested)
                     break;
 
-                serializer.Serialize(_jsonWriter, blob);
+                WriteFileFingerprint(_jsonWriter, blob);
 
-                ++BlobUpdateCount;
-                BlobUpdateSize += blob.Fingerprint.Size;
+                ++UpdateCount;
+                UpdateSize += blob.Fingerprint.Size;
             }
 
             cancellationToken.ThrowIfCancellationRequested();
@@ -309,7 +393,7 @@ namespace AwsSyncer
 
         void OpenWriter()
         {
-            Debug.WriteLine("BsonFilePathStore.OpenWriter()");
+            Debug.WriteLine("BsonFileFingerprintStore.OpenWriter()");
 
             if (null == _bsonFile)
             {
@@ -329,7 +413,7 @@ namespace AwsSyncer
 
         void CloseWriter()
         {
-            Debug.WriteLine("BsonFilePathStore.CloseWriter()");
+            Debug.WriteLine("BsonFileFingerprintStore.CloseWriter()");
 
             var jsonWriter = _jsonWriter;
             _jsonWriter = null;
@@ -365,11 +449,11 @@ namespace AwsSyncer
             }
         }
 
-        public async Task StoreBlobsAsync(ICollection<IBlob> blobs, CancellationToken cancellationToken)
+        public async Task StoreBlobsAsync(ICollection<IFileFingerprint> fileFingerprints, CancellationToken cancellationToken)
         {
             using (await _lock.LockAsync(cancellationToken).ConfigureAwait(false))
             {
-                StoreBlobsImpl(blobs, cancellationToken);
+                StoreBlobsImpl(fileFingerprints, cancellationToken);
             }
         }
     }
