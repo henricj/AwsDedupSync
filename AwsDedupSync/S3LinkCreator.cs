@@ -19,7 +19,6 @@
 // DEALINGS IN THE SOFTWARE.
 
 using System;
-using System.Collections.Generic;
 using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
@@ -30,122 +29,27 @@ namespace AwsDedupSync
 {
     public class S3LinkCreator
     {
+        readonly LinkManager _linkManager;
         readonly S3Settings _s3Settings;
 
         public S3LinkCreator(S3Settings s3Settings)
         {
             _s3Settings = s3Settings;
+            _linkManager = new LinkManager();
         }
 
-        public async Task UpdateLinksAsync(AwsManager awsManager, ISourceBlock<IBlob> linkBlobs, CancellationToken cancellationToken)
+        public async Task UpdateLinksAsync(AwsManager awsManager, ISourceBlock<Tuple<AnnotatedPath, IFileFingerprint>> linkBlobs,
+            CancellationToken cancellationToken)
         {
             try
             {
-                await CreateLinksAsync(awsManager, linkBlobs, cancellationToken).ConfigureAwait(false);
+                await _linkManager.CreateLinksAsync(awsManager, linkBlobs, _s3Settings.ActuallyWrite, cancellationToken).ConfigureAwait(false);
 
                 Debug.WriteLine("Done processing links");
             }
             catch (Exception ex)
             {
                 Debug.WriteLine("Processing links failed: " + ex.Message);
-            }
-        }
-
-        async Task CreateLinksAsync(AwsManager awsManager, ISourceBlock<IBlob> blobSourceBlock, CancellationToken cancellationToken)
-        {
-            var collectionBlocks = new Dictionary<string, ITargetBlock<IBlob>>();
-            var tasks = new List<Task>();
-
-            var routeBlock = new ActionBlock<IBlob>(async blob =>
-            {
-                var collection = blob.Collection;
-
-                if (string.IsNullOrEmpty(collection))
-                    return;
-
-                ITargetBlock<IBlob> collectionBlock;
-                if (!collectionBlocks.TryGetValue(collection, out collectionBlock))
-                {
-                    var bufferBlock = new BufferBlock<IBlob>();
-
-                    collectionBlock = bufferBlock;
-
-                    collectionBlocks[collection] = collectionBlock;
-
-                    var task = CreateLinksBlockAsync(awsManager, collection, bufferBlock, cancellationToken);
-
-                    tasks.Add(task);
-                }
-
-                await collectionBlock.SendAsync(blob, cancellationToken).ConfigureAwait(false);
-            });
-
-            blobSourceBlock.LinkTo(routeBlock, S3PathSyncer.DataflowLinkOptionsPropagateEnabled);
-
-            await routeBlock.Completion.ConfigureAwait(false);
-
-            Debug.WriteLine("S3LinkCreateor.CreateLinkAsync() routeBlock is done");
-
-            foreach (var block in collectionBlocks.Values)
-                block.Complete();
-
-            await Task.WhenAll(tasks).ConfigureAwait(false);
-
-            Debug.WriteLine("S3LinkCreateor.CreateLinkAsync() all link blocks are done");
-        }
-
-        async Task CreateLinksBlockAsync(AwsManager awsManager, string collection, ISourceBlock<IBlob> collectionBlock, CancellationToken cancellationToken)
-        {
-            var links = await awsManager.GetLinksAsync(collection, cancellationToken).ConfigureAwait(false);
-
-            Debug.WriteLine($"Link handler for {collection} found {links.Count} existing links");
-
-            var createLinkBlock = new ActionBlock<IBlob>(blob => CreateLinkAsync(awsManager, collection, blob, links, cancellationToken),
-                new ExecutionDataflowBlockOptions { MaxDegreeOfParallelism = 256, CancellationToken = cancellationToken });
-
-            collectionBlock.LinkTo(createLinkBlock, S3PathSyncer.DataflowLinkOptionsPropagateEnabled);
-
-            await createLinkBlock.Completion.ConfigureAwait(false);
-
-            Debug.WriteLine($"Link handler for {collection} is done");
-        }
-
-        async Task CreateLinkAsync(AwsManager awsManager, string name, IBlob blob, ICollection<string> tree, CancellationToken cancellationToken)
-        {
-            if (name != blob.Collection)
-                return;
-
-            var relativePath = blob.RelativePath;
-
-            if (relativePath.StartsWith(".."))
-                return;
-
-            if (relativePath == blob.FullFilePath)
-                return;
-
-            if (relativePath.StartsWith("file:", StringComparison.OrdinalIgnoreCase))
-                return;
-
-            relativePath = relativePath.Replace('\\', '/');
-
-            if (relativePath.StartsWith("/", StringComparison.Ordinal))
-                return;
-
-            if (tree.Contains(relativePath))
-                return;
-
-            Console.WriteLine("Link {0} {1} -> {2}", name, relativePath, blob.Key.Substring(0, 12));
-
-            if (!_s3Settings.ActuallyWrite)
-                return;
-
-            try
-            {
-                await awsManager.CreateLinkAsync(name, relativePath, blob, cancellationToken).ConfigureAwait(false);
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine("Link {0} {1} -> {2} failed: {3}", name, relativePath, blob.Key.Substring(0, 12), ex.Message);
             }
         }
     }

@@ -97,6 +97,8 @@
     <Compile Include="FileFingerprintManager.cs" />
     <Compile Include="FileSequence.cs" />
     <Compile Include="HashEqualityComparer.cs" />
+    <Compile Include="LinkFingerprintJoiner.cs" />
+    <Compile Include="LinkManager.cs" />
     <Compile Include="MimeDetector.cs" />
     <Compile Include="MsTicksDateTimeJsonConverter.cs" />
     <Compile Include="PathManager.cs" />
