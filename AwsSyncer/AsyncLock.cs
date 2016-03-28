@@ -108,7 +108,7 @@ namespace AwsSyncer
                     return Task.FromResult<IDisposable>(new Releaser(this));
                 }
 
-                tcs = new TaskCompletionSource<IDisposable>();
+                tcs = new TaskCompletionSource<IDisposable>(TaskCreationOptions.RunContinuationsAsynchronously);
 
                 _pending.Enqueue(tcs);
             }
@@ -134,11 +134,7 @@ namespace AwsSyncer
                     }
 
                     if (wasPending)
-                    {
-                        var task = Task.Run(() => tcs.TrySetCanceled());
-
-                        TaskCollector.Default.Add(task, "AsyncLock Propagate cancel");
-                    }
+                        tcs.TrySetCanceled();
                 }))
             {
                 return await tcs.Task.ConfigureAwait(false);
