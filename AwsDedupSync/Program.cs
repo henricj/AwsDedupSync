@@ -22,6 +22,7 @@ using System;
 using System.Configuration;
 using System.Diagnostics;
 using System.IO;
+using System.Net;
 using System.Text;
 using System.Threading;
 using AwsSyncer;
@@ -34,7 +35,8 @@ namespace AwsDedupSync
 
         static void Main(string[] args)
         {
-            //ServicePointManager.DefaultConnectionLimit = 20;
+            if (ServicePointManager.DefaultConnectionLimit < 30)
+                ServicePointManager.DefaultConnectionLimit = 30;
 
             Console.Out.Close();
             using (var writer = new StreamWriter(Console.OpenStandardOutput(), Utf8NoBom, 4 * 4096))
