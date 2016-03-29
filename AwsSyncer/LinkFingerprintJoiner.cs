@@ -102,7 +102,6 @@ namespace AwsSyncer
             var key = Tuple.Create(annotatedPath.Collection, annotatedPath.RelativePath);
 
             IFileFingerprint fileFingerprint;
-            var first = false;
 
             lock (pathFingerprint)
             {
@@ -110,9 +109,6 @@ namespace AwsSyncer
                     throw new InvalidOperationException("Duplicate collection/relative path for " + annotatedPath.FileInfo.FullName);
 
                 pathFingerprint.AnnotatedPaths[key] = annotatedPath;
-
-                if (1 == pathFingerprint.AnnotatedPaths.Count)
-                    first = true;
 
                 fileFingerprint = pathFingerprint.FileFingerprint;
             }

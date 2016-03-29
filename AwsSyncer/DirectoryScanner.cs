@@ -27,7 +27,7 @@ using System.Threading.Tasks.Dataflow;
 
 namespace AwsSyncer
 {
-    public sealed class DirectoryScanner
+    public static class DirectoryScanner
     {
         public static Task GenerateAnnotatedPathsAsync(IEnumerable<CollectionPath> paths,
             ITargetBlock<AnnotatedPath[]> filePathTargetBlock, CancellationToken cancellationToken)
@@ -54,7 +54,7 @@ namespace AwsSyncer
             return PostAllFilePathsAsync(paths, batcher, cancellationToken);
         }
 
-        public static Task PostAllFilePathsAsync(IEnumerable<CollectionPath> paths,
+        static Task PostAllFilePathsAsync(IEnumerable<CollectionPath> paths,
             ITargetBlock<AnnotatedPath> filePathTargetBlock, CancellationToken cancellationToken)
         {
             var scanTasks = paths

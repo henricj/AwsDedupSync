@@ -349,9 +349,9 @@ namespace AwsSyncer
             }
             catch (OperationCanceledException)
             { }
-            catch (Exception)
+            catch (Exception ex)
             {
-                Console.WriteLine($"Unable to truncate corrupt file");
+                Console.WriteLine("Unable to truncate corrupt file: " + ex.Message);
             }
 
             if (allOk)

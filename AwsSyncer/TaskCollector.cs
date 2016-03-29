@@ -71,7 +71,7 @@ namespace AwsSyncer
             catch (AggregateException ex)
             {
                 foreach (var e in ex.InnerExceptions)
-                    Debug.WriteLine("TaskCollector.Wait() Task wait failed: " + ex.Message);
+                    Debug.WriteLine("TaskCollector.Wait() Task wait failed: " + e.Message);
             }
             catch (Exception ex)
             {

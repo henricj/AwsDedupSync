@@ -39,7 +39,6 @@ namespace AwsSyncer
 
     public class PathManager : IPathManager
     {
-        readonly Uri _bucketUrl;
         string _blobPrefix = "b/";
         string _treePrefix = "t/";
 
@@ -54,12 +53,6 @@ namespace AwsSyncer
 
             AwsS3Url = awsS3Url;
             Bucket = bucket;
-
-            var builder = new UriBuilder(awsS3Url);
-
-            builder.Host = bucket + "." + builder.Host;
-
-            _bucketUrl = builder.Uri;
         }
 
         public string BlobPrefix
