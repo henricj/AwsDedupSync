@@ -33,13 +33,13 @@ namespace AwsSyncer
             = new ConcurrentDictionary<string, PathFingerprint>(StringComparer.CurrentCultureIgnoreCase);
 
         readonly ITargetBlock<Tuple<AnnotatedPath, IFileFingerprint>> _targetBlock;
-        readonly ITargetBlock<Tuple<IFileFingerprint, AnnotatedPath>> _uniqueTargetBlock;
 
-        public LinkFingerprintJoiner(ITargetBlock<Tuple<AnnotatedPath, IFileFingerprint>> targetBlock,
-            ITargetBlock<Tuple<IFileFingerprint, AnnotatedPath>> uniqueTargetBlock)
+        public LinkFingerprintJoiner(ITargetBlock<Tuple<AnnotatedPath, IFileFingerprint>> targetBlock)
         {
+            if (null == targetBlock)
+                throw new ArgumentNullException(nameof(targetBlock));
+
             _targetBlock = targetBlock;
-            _uniqueTargetBlock = uniqueTargetBlock;
 
             AnnotatedPathsBlock = new ActionBlock<AnnotatedPath[]>(
                 aps => Task.WhenAll(aps.Select(SetAnnotatedPathAsync)),
@@ -48,11 +48,8 @@ namespace AwsSyncer
             FileFingerprintBlock = new ActionBlock<IFileFingerprint>(SetFileFingerprintAsync,
                 new ExecutionDataflowBlockOptions { MaxDegreeOfParallelism = DataflowBlockOptions.Unbounded });
 
-            var task = Task.WhenAll(AnnotatedPathsBlock.Completion, FileFingerprintBlock.Completion).ContinueWith(_ =>
-            {
-                targetBlock.Complete();
-                uniqueTargetBlock.Complete();
-            });
+            var task = Task.WhenAll(AnnotatedPathsBlock.Completion, FileFingerprintBlock.Completion)
+                .ContinueWith(_ => { targetBlock.Complete(); });
 
             TaskCollector.Default.Add(task, "Joiner completion");
         }
@@ -95,13 +92,6 @@ namespace AwsSyncer
 
             var tasks = annotatedPaths.Select(ap => _targetBlock.SendAsync(Tuple.Create(ap, fileFingerprint)));
 
-            if (0 != annotatedPaths.Length)
-            {
-                var task = _uniqueTargetBlock.SendAsync(Tuple.Create(fileFingerprint, annotatedPaths[0]));
-
-                return Task.WhenAll(tasks.Union(new Task[] { task }));
-            }
-
             return Task.WhenAll(tasks);
         }
 
@@ -130,14 +120,7 @@ namespace AwsSyncer
             if (null == fileFingerprint)
                 return Task.CompletedTask;
 
-            var sendTask = _targetBlock.SendAsync(Tuple.Create(annotatedPath, fileFingerprint));
-
-            if (!first)
-                return sendTask;
-
-            var sendFingerprintTask = _uniqueTargetBlock.SendAsync(Tuple.Create(fileFingerprint, annotatedPath));
-
-            return Task.WhenAll(sendTask, sendFingerprintTask);
+            return _targetBlock.SendAsync(Tuple.Create(annotatedPath, fileFingerprint));
         }
 
         class PathFingerprint

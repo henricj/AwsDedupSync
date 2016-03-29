@@ -69,7 +69,7 @@ namespace AwsSyncer
             {
                 var annotatedPathBroadcastBlock = new BroadcastBlock<AnnotatedPath[]>(aps => aps, new DataflowBlockOptions { CancellationToken = cancellationToken });
 
-                var joiner = new LinkFingerprintJoiner(joinedTargetBlock, uniqueFingerprintTargetBlock);
+                var joiner = new LinkFingerprintJoiner(joinedTargetBlock);
 
                 annotatedPathBroadcastBlock.LinkTo(joiner.AnnotatedPathsBlock, new DataflowLinkOptions { PropagateCompletion = true });
 
