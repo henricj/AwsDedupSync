@@ -71,9 +71,31 @@ namespace AwsDedupSync
                         var uniqueFingerprintBlock = new BufferBlock<Tuple<IFileFingerprint, AnnotatedPath>>();
                         var linkBlock = new BufferBlock<Tuple<AnnotatedPath, IFileFingerprint>>();
 
+                        var uniqueFingerprints = new HashSet<BlobFingerprint>();
+
+                        var uniqueFingerprintFilterBlock = new ActionBlock<Tuple<AnnotatedPath, IFileFingerprint>>(
+                            t =>
+                            {
+                                if (!uniqueFingerprints.Add(t.Item2.Fingerprint))
+                                    return Task.CompletedTask;
+
+                                return uniqueFingerprintBlock.SendAsync(Tuple.Create(t.Item2, t.Item1), cancellationToken);
+                            }, new ExecutionDataflowBlockOptions { CancellationToken = cancellationToken });
+
+                        var uniqueCompletionTask = uniqueFingerprintFilterBlock
+                            .Completion.ContinueWith(_ => { uniqueFingerprintBlock.Complete(); });
+
+                        TaskCollector.Default.Add(uniqueCompletionTask, "Unique filter completion");
+
+                        var joinedBroadcastBlock = new BroadcastBlock<Tuple<AnnotatedPath, IFileFingerprint>>(t => t,
+                            new DataflowBlockOptions { CancellationToken = cancellationToken });
+
+                        joinedBroadcastBlock.LinkTo(linkBlock, DataflowLinkOptionsPropagateEnabled);
+                        joinedBroadcastBlock.LinkTo(uniqueFingerprintFilterBlock, DataflowLinkOptionsPropagateEnabled);
+
                         var tasks = new List<Task>();
 
-                        var loadBlobTask = blobManager.LoadAsync(namedPaths, uniqueFingerprintBlock, linkBlock, cancellationToken);
+                        var loadBlobTask = blobManager.LoadAsync(namedPaths, joinedBroadcastBlock, cancellationToken);
 
                         tasks.Add(loadBlobTask);
 
@@ -100,8 +122,6 @@ namespace AwsDedupSync
                         tasks.Add(scanBlobAsync);
 
                         await WaitAllWithWake(tasks).ConfigureAwait(false);
-
-                        uniqueFingerprintBlock.Complete();
 
                         if (null != uploadBlobsTask)
                             await uploadBlobsTask.ConfigureAwait(false);

@@ -48,24 +48,23 @@ namespace AwsSyncer
         #endregion
 
         public async Task LoadAsync(CollectionPath[] paths,
-            ITargetBlock<Tuple<IFileFingerprint, AnnotatedPath>> uniqueFingerprintTargetBlock,
             ITargetBlock<Tuple<AnnotatedPath, IFileFingerprint>> joinedTargetBlock,
             CancellationToken cancellationToken)
         {
             await _fileFingerprintManager.LoadAsync(cancellationToken).ConfigureAwait(false);
 
-            await GenerateFileFingerprintsAsync(paths, uniqueFingerprintTargetBlock, joinedTargetBlock, cancellationToken)
+            await GenerateFileFingerprintsAsync(paths, joinedTargetBlock, cancellationToken)
                 .ConfigureAwait(false);
         }
 
         async Task GenerateFileFingerprintsAsync(CollectionPath[] paths,
-            ITargetBlock<Tuple<IFileFingerprint, AnnotatedPath>> uniqueFingerprintTargetBlock,
             ITargetBlock<Tuple<AnnotatedPath, IFileFingerprint>> joinedTargetBlock,
             CancellationToken cancellationToken)
         {
             try
             {
-                var annotatedPathBroadcastBlock = new BroadcastBlock<AnnotatedPath[]>(aps => aps, new DataflowBlockOptions { CancellationToken = cancellationToken });
+                var annotatedPathBroadcastBlock = new BroadcastBlock<AnnotatedPath[]>(aps => aps,
+                    new DataflowBlockOptions { CancellationToken = cancellationToken });
 
                 var joiner = new LinkFingerprintJoiner(joinedTargetBlock);
 
