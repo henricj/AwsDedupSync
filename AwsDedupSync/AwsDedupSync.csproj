@@ -76,6 +76,7 @@
     <None Include="packages.config">
       <SubType>Designer</SubType>
     </None>
+    <None Include="s3\iam policy.json" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\AwsSyncer\AwsSyncer.csproj">

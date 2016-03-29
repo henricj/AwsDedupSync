@@ -1,0 +1,75 @@
+﻿{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Sid": "AllowRootListing",
+            "Action": [
+                "s3:ListBucket"
+            ],
+            "Effect": "Allow",
+            "Resource": [
+                "arn:aws:s3:::images.henric.org"
+            ],
+            "Condition": {
+                "StringEquals": {
+                    "s3:prefix": [
+                        "",
+                        "b/",
+                        "t/"
+                    ],
+                    "s3:delimiter": [
+                        "/"
+                    ]
+                }
+            }
+        },
+        {
+            "Sid": "AllowListingTreeFolder",
+            "Action": [
+                "s3:ListBucket"
+            ],
+            "Effect": "Allow",
+            "Resource": [
+                "arn:aws:s3:::images.henric.org"
+            ],
+            "Condition": {
+                "StringLike": {
+                    "s3:prefix": [
+                        "b/*",
+                        "t/*"
+                    ]
+                }
+            }
+        },
+        {
+            "Sid": "AllowGets",
+            "Effect": "Allow",
+          "Action": [
+            "s3:GetBucketAcl",
+            "s3:GetBucketLocation",
+            "s3:GetBucketLogging",
+            "s3:GetBucketNotification",
+            "s3:GetBucketPolicy",
+            "s3:GetObject",
+            "s3:GetObjectAcl",
+            "s3:ListBucketMultipartUploads",
+            "s3:ListMultipartUploadParts"
+          ],
+            "Resource": [
+                "arn:aws:s3:::images.henric.org/*"
+            ]
+        },
+        {
+            "Sid": "AllowPuts",
+            "Effect": "Allow",
+            "Action": [
+                "s3:AbortMultipartUpload",
+                "s3:PutObject"
+            ],
+            "Resource": [
+                "arn:aws:s3:::images.henric.org/b/*",
+                "arn:aws:s3:::images.henric.org/t/*"
+            ]
+        }
+    ]
+}
