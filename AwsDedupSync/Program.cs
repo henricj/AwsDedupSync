@@ -69,6 +69,8 @@ namespace AwsDedupSync
                     Console.WriteLine(ex.Message);
                 }
 
+                TaskCollector.Default.Wait();
+
                 var process = Process.GetCurrentProcess();
 
                 Console.WriteLine("Elapsed: {0} CPU {1} User {2}", sw.Elapsed, process.TotalProcessorTime, process.UserProcessorTime);
