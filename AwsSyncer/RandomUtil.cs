@@ -33,14 +33,14 @@ namespace AwsSyncer
 
         public static Random CreateRandom()
         {
+            var buffer = new byte[4];
+
             using (var rng = RandomNumberGenerator.Create())
             {
-                var buffer = new byte[4];
-
                 rng.GetBytes(buffer);
-
-                return new Random(BitConverter.ToInt32(buffer, 0));
             }
+
+            return new Random(BitConverter.ToInt32(buffer, 0));
         }
 
         /// <summary>
