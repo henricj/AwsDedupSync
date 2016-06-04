@@ -1,0 +1,62 @@
+Sark=\\sark.int.henric.info\henricnt\pics Scott=\\scott.private\public\Pictures Mcp=C:\Data\Photo
+
+Sark=\\sark.int.henric.info\henricnt\xfer\awstest Scott=\\scott.private\public\Henric\awstest Mcp=C:\src\AWS\AwsDedupSync\AwsSyncer\Properties
+
+Fingerprint
+   size
+   hash
+
+FilePath
+   full path
+   last modified
+   Fingerprint
+
+Blobs
+   key (from Fingerprint)
+   Fingerprint
+   <content>
+
+Links
+   Collection
+   relative path
+   key (to blob)
+
+
+DirScanner generates [collection, relative path, full path, last modified]    // Called "AnnotatedPath
+
+FileFingerprintStore generates unique(full path) [full path, last modified, fingerprint]   // Called "FileFingerprint"
+
+UniquePaths maps DirScanner [collection, relative path, full path, last modified] -> unique [full path]
+
+Fingerprinter maps UniquePaths unique [full path]  // Called "FileFingerprintManager"
+   LEFT JOIN FileFingerprintStore unique(full path) [full path, last modified, fingerprint]
+   ON full path
+   -> unique(full path) [full path, last modified, fingerprint]
+
+UniqueLinks maps Fingerprinter unique(full path) [full path, last modified, fingerprint]
+   JOIN DirScanner [collection, relative path, full path, last modified]
+   ON full path
+   -> unique(collection, relative path) [collection, relative path, fingerprint]
+
+BlobStore generates unique [key]
+
+LinkStore generates unique [collection, relative path]
+
+BlobUploader takes Fingerprinter unique(full path) [full path, last modified, fingerprint], Blob List unique [key]
+   for each fingerprint in Fingerprinter unique(full path) [full path, last modified, fingerprint]
+      let key = Key fingerprint
+      if key in BlobStore unique [key]
+         continue
+      PUT(BlobStore) key = <data at full path> 
+
+
+LinkCreator takes UniqueLinks unique(collection, relative path) [collection, relative path, fingerprint],
+      Linkstore unique [collection, relative path]
+   for each link in UniqueLinks unique(collection, relative path) [collection, relative path, fingerprint]
+      let key = Key fingerprint
+      if link(collection, relative path) in LinkList unique [collection, relative path]
+         let current = GET(LinkStore) link(collection, relative path)
+         if current(key) = key
+            continue
+      PUT(LinkStore) link(collection, relative path) = Redirect to key
+
