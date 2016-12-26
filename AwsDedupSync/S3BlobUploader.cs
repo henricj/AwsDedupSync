@@ -60,7 +60,7 @@ namespace AwsDedupSync
                         // of the individual parts.
                         if (etag.Contains("-"))
                         {
-                            Debug.WriteLine($"{tuple.Item1.FullFilePath} is a multi-part upload witih ETag {etag} {tuple.Item1.Fingerprint.Key().Substring(0, 12)}");
+                            Debug.WriteLine($"{tuple.Item1.FullFilePath} is a multi-part upload with ETag {etag} {tuple.Item1.Fingerprint.Key().Substring(0, 12)}");
 
                             return null;
                         }
