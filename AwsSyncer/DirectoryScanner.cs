@@ -20,6 +20,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -29,7 +30,7 @@ namespace AwsSyncer
 {
     public static class DirectoryScanner
     {
-        public static Task GenerateAnnotatedPathsAsync(IEnumerable<CollectionPath> paths,
+        public static Task GenerateAnnotatedPathsAsync(IEnumerable<CollectionPath> paths, Func<FileInfo, bool> filePredicate,
             ITargetBlock<AnnotatedPath[]> filePathTargetBlock, CancellationToken cancellationToken)
         {
             var shuffleBlock = new TransformBlock<AnnotatedPath[], AnnotatedPath[]>(
@@ -51,28 +52,29 @@ namespace AwsSyncer
                 PropagateCompletion = true
             });
 
-            return PostAllFilePathsAsync(paths, batcher, cancellationToken);
+            return PostAllFilePathsAsync(paths, filePredicate, batcher, cancellationToken);
         }
 
-        static Task PostAllFilePathsAsync(IEnumerable<CollectionPath> paths,
+        static Task PostAllFilePathsAsync(IEnumerable<CollectionPath> paths, Func<FileInfo, bool> filePredicate,
             ITargetBlock<AnnotatedPath> filePathTargetBlock, CancellationToken cancellationToken)
         {
             var scanTasks = paths
                 .Select<CollectionPath, Task>(path =>
-                    Task.Factory.StartNew(async () =>
-                    {
-                        foreach (var file in PathUtil.ScanDirectory(path.Path))
+                    Task.Factory.StartNew(
+                        async () =>
                         {
-                            if (cancellationToken.IsCancellationRequested)
-                                break;
+                            foreach (var file in PathUtil.ScanDirectory(path.Path, filePredicate))
+                            {
+                                if (cancellationToken.IsCancellationRequested)
+                                    break;
 
-                            var relativePath = PathUtil.MakeRelativePath(path.Path, file.FullName);
+                                var relativePath = PathUtil.MakeRelativePath(path.Path, file.FullName);
 
-                            var annotatedPath = new AnnotatedPath { FileInfo = file, Collection = path.Collection ?? path.Path, RelativePath = relativePath };
+                                var annotatedPath = new AnnotatedPath { FileInfo = file, Collection = path.Collection ?? path.Path, RelativePath = relativePath };
 
-                            await filePathTargetBlock.SendAsync(annotatedPath, cancellationToken).ConfigureAwait(false);
-                        }
-                    },
+                                await filePathTargetBlock.SendAsync(annotatedPath, cancellationToken).ConfigureAwait(false);
+                            }
+                        },
                         cancellationToken,
                         TaskCreationOptions.DenyChildAttach | TaskCreationOptions.LongRunning | TaskCreationOptions.RunContinuationsAsynchronously,
                         TaskScheduler.Default));
@@ -81,7 +83,7 @@ namespace AwsSyncer
 
             var completeTask = task.ContinueWith(_ => filePathTargetBlock.Complete());
 
-            TaskCollector.Default.Add(completeTask, "PostallFilePathsAsync");
+            TaskCollector.Default.Add(completeTask, "PostAllFilePathsAsync");
 
             return task;
         }

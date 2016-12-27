@@ -20,6 +20,7 @@
 
 using System;
 using System.Diagnostics;
+using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Threading.Tasks.Dataflow;
@@ -47,17 +48,17 @@ namespace AwsSyncer
 
         #endregion
 
-        public async Task LoadAsync(CollectionPath[] paths,
+        public async Task LoadAsync(CollectionPath[] paths, Func<FileInfo, bool> filePredicate,
             ITargetBlock<Tuple<AnnotatedPath, IFileFingerprint>> joinedTargetBlock,
             CancellationToken cancellationToken)
         {
             await _fileFingerprintManager.LoadAsync(cancellationToken).ConfigureAwait(false);
 
-            await GenerateFileFingerprintsAsync(paths, joinedTargetBlock, cancellationToken)
+            await GenerateFileFingerprintsAsync(paths, filePredicate, joinedTargetBlock, cancellationToken)
                 .ConfigureAwait(false);
         }
 
-        async Task GenerateFileFingerprintsAsync(CollectionPath[] paths,
+        async Task GenerateFileFingerprintsAsync(CollectionPath[] paths, Func<FileInfo, bool> filePredicate,
             ITargetBlock<Tuple<AnnotatedPath, IFileFingerprint>> joinedTargetBlock,
             CancellationToken cancellationToken)
         {
@@ -80,7 +81,7 @@ namespace AwsSyncer
 
                 try
                 {
-                    await DirectoryScanner.GenerateAnnotatedPathsAsync(paths, annotatedPathBroadcastBlock, cancellationToken).ConfigureAwait(false);
+                    await DirectoryScanner.GenerateAnnotatedPathsAsync(paths, filePredicate, annotatedPathBroadcastBlock, cancellationToken).ConfigureAwait(false);
                 }
                 catch (OperationCanceledException)
                 { }

@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2014 Henric Jungheim <software@henric.org>
+﻿// Copyright (c) 2014-2016 Henric Jungheim <software@henric.org>
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a
 // copy of this software and associated documentation files (the "Software"),
@@ -26,12 +26,14 @@ using System.Net;
 using System.Text;
 using System.Threading;
 using AwsSyncer;
+using System.Linq;
 
 namespace AwsDedupSync
 {
     static class Program
     {
         static readonly Encoding Utf8NoBom = new UTF8Encoding(false);
+        static readonly string[] ExcludeFiles = { "desktop.ini", "Thumbs.db" };
 
         static void Main(string[] args)
         {
@@ -60,7 +62,7 @@ namespace AwsDedupSync
 
                     sw.Start();
 
-                    ConsoleCancel.RunAsync(ct => syncer.SyncPathsAsync(bucket, args, ct), TimeSpan.Zero).Wait();
+                    ConsoleCancel.RunAsync(ct => syncer.SyncPathsAsync(bucket, args, fi => !ExcludeFiles.Contains(fi.Name, StringComparer.OrdinalIgnoreCase), ct), TimeSpan.Zero).Wait();
 
                     sw.Stop();
                 }

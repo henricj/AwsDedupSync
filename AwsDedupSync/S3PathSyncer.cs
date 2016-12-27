@@ -47,7 +47,7 @@ namespace AwsDedupSync
 
         public S3Settings S3Settings { get; } = new S3Settings();
 
-        public async Task SyncPathsAsync(string bucket, IEnumerable<string> paths, CancellationToken cancellationToken)
+        public async Task SyncPathsAsync(string bucket, IEnumerable<string> paths, Func<FileInfo, bool> filePredicate, CancellationToken cancellationToken)
         {
             // BEWARE:  This could cause trouble if there are
             // any case-sensitive paths involved.
@@ -95,7 +95,7 @@ namespace AwsDedupSync
 
                         var tasks = new List<Task>();
 
-                        var loadBlobTask = blobManager.LoadAsync(namedPaths, joinedBroadcastBlock, cancellationToken);
+                        var loadBlobTask = blobManager.LoadAsync(namedPaths, filePredicate, joinedBroadcastBlock, cancellationToken);
 
                         tasks.Add(loadBlobTask);
 

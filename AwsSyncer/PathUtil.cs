@@ -95,7 +95,7 @@ namespace AwsSyncer
             return path;
         }
 
-        public static IEnumerable<FileInfo> ScanDirectory(string path)
+        public static IEnumerable<FileInfo> ScanDirectory(string path, Func<FileInfo, bool> filePredicate)
         {
             Debug.WriteLine($"PathUtil.ScanDirectory({path})");
 
@@ -111,7 +111,10 @@ namespace AwsSyncer
                 {
                     foreach (var fileInfo in dir.EnumerateFiles("*", SearchOption.AllDirectories))
                     {
-                        yield return fileInfo;
+                        if (filePredicate(fileInfo))
+                            yield return fileInfo;
+                        else
+                            Debug.WriteLine($"PathUtil.ScanDirectory({path}) excluding {fileInfo.FullName}");
                     }
                 }
             }
@@ -119,8 +122,10 @@ namespace AwsSyncer
             {
                 var fileInfo = new FileInfo(path);
 
-                if (fileInfo.Exists)
+                if (fileInfo.Exists && filePredicate(fileInfo))
                     yield return fileInfo;
+                else
+                    Debug.WriteLine($"PathUtil.ScanDirectory({path}) excluding {fileInfo.FullName}");
             }
 
             timer.Stop();
