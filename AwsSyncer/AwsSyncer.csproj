@@ -103,6 +103,7 @@
     <Compile Include="AwsManagerFactory.cs" />
     <Compile Include="S3PutBase.cs" />
     <Compile Include="S3Util.cs" />
+    <Compile Include="SequentialReadStream.cs" />
     <Compile Include="SizeConversion.cs" />
     <Compile Include="StreamFingerprinter.cs" />
     <Compile Include="TaskCollector.cs" />

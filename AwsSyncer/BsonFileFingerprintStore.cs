@@ -166,6 +166,9 @@ namespace AwsSyncer
 
             _fileSequence.Rescan();
 
+            var totalSize = 0L;
+            var compressedSize = 0L;
+
             foreach (var fileInfo in _fileSequence.Files)
             {
                 try
@@ -177,7 +180,8 @@ namespace AwsSyncer
 
                     using (var fileStream = OpenBsonFileForRead(fileInfo))
                     using (var lzmaDecodeStream = new LzmaDecodeStream(fileStream))
-                    using (var br = new BsonReader(lzmaDecodeStream) { DateTimeKindHandling = DateTimeKind.Utc, SupportMultipleContent = true })
+                    using (var bs = new SequentialReadStream(lzmaDecodeStream))
+                    using (var br = new BsonReader(bs) { DateTimeKindHandling = DateTimeKind.Utc, SupportMultipleContent = true })
                     {
                         while (br.Read())
                         {
@@ -208,6 +212,9 @@ namespace AwsSyncer
                                 Debug.WriteLine("BsonFileFingerprintStore.LoadBlobsImpl() read failed: " + ex.Message);
                             }
                         }
+
+                        totalSize += bs.Position;
+                        compressedSize += fileStream.Length;
                     }
                 }
                 catch (IOException)
@@ -223,6 +230,11 @@ namespace AwsSyncer
                     needRebuild = true;
                 }
             }
+
+            Debug.WriteLine($"Read {SizeConversion.BytesToMiB(totalSize):F2}MiB bytes from {SizeConversion.BytesToMiB(compressedSize):F2}MiB file");
+
+            var count = (double)blobs.Count;
+            Debug.WriteLine($"Average size {totalSize / count:F1} bytes or {compressedSize / count:F1} compressed");
 
             if (blobCount > blobs.Count + 100 + blobs.Count / 8)
                 needRebuild = true;
