@@ -83,8 +83,6 @@ namespace AwsSyncer
 
         public async Task LoadAsync(CancellationToken cancellationToken)
         {
-            //var task = GenerateFileFingerprintsAsync(annotatedPathSourceBlock, fileFingerprintTargetBlock, cancellationToken);
-
             // Most of the time, the load will happen synchronously.  We do async over sync here so our
             // caller will not block for too long.  We do need to make sure that the annotatedPathSourceBlock
             // has been linked to something before we await (GenerateFileFingerprintsAsync() takes care
