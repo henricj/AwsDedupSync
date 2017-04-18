@@ -1,4 +1,4 @@
-// Copyright (c) 2016 Henric Jungheim <software@henric.org>
+// Copyright (c) 2016-2017 Henric Jungheim <software@henric.org>
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a
 // copy of this software and associated documentation files (the "Software"),
@@ -39,7 +39,7 @@ namespace AwsSyncer
         readonly AsyncLock _lock = new AsyncLock();
         Stream _bsonFile;
         Stream _bufferStream;
-        BsonWriter _jsonWriter;
+        BsonDataWriter _jsonWriter;
         LzmaEncodeStream _lzmaEncodeStream;
 
         public BsonFileFingerprintStore()
@@ -181,7 +181,7 @@ namespace AwsSyncer
                     using (var fileStream = OpenBsonFileForRead(fileInfo))
                     using (var lzmaDecodeStream = new LzmaDecodeStream(fileStream))
                     using (var bs = new SequentialReadStream(lzmaDecodeStream))
-                    using (var br = new BsonReader(bs) { DateTimeKindHandling = DateTimeKind.Utc, SupportMultipleContent = true })
+                    using (var br = new BsonDataReader(bs) { DateTimeKindHandling = DateTimeKind.Utc, SupportMultipleContent = true })
                     {
                         while (br.Read())
                         {
@@ -420,7 +420,7 @@ namespace AwsSyncer
                 _bufferStream = new BufferedStream(_lzmaEncodeStream, 512 * 1024);
 
             if (null == _jsonWriter)
-                _jsonWriter = new BsonWriter(_bufferStream) { DateTimeKindHandling = DateTimeKind.Utc };
+                _jsonWriter = new BsonDataWriter(_bufferStream) { DateTimeKindHandling = DateTimeKind.Utc };
         }
 
         void CloseWriter()
