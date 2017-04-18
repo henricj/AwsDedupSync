@@ -163,6 +163,7 @@ namespace AwsSyncer
             var needRebuild = false;
 
             var blobCount = 0;
+            var fileCount = 0;
 
             _fileSequence.Rescan();
 
@@ -171,6 +172,8 @@ namespace AwsSyncer
 
             foreach (var fileInfo in _fileSequence.Files)
             {
+                ++fileCount;
+
                 try
                 {
                     fileInfo.Refresh();
@@ -237,6 +240,9 @@ namespace AwsSyncer
             Debug.WriteLine($"Average size {totalSize / count:F1} bytes or {compressedSize / count:F1} compressed");
 
             if (blobCount > blobs.Count + 100 + blobs.Count / 8)
+                needRebuild = true;
+
+            if (fileCount > 16)
                 needRebuild = true;
 
             if (needRebuild)
