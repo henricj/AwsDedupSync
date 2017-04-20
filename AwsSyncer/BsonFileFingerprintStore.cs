@@ -234,7 +234,7 @@ namespace AwsSyncer
                 }
             }
 
-            Debug.WriteLine($"Read {SizeConversion.BytesToMiB(totalSize):F2}MiB bytes from {SizeConversion.BytesToMiB(compressedSize):F2}MiB file");
+            Debug.WriteLine($"Read {totalSize.BytesToMiB():F2}MiB bytes from {compressedSize.BytesToMiB():F2}MiB file");
 
             var count = (double)blobs.Count;
             Debug.WriteLine($"Average size {totalSize / count:F1} bytes or {compressedSize / count:F1} compressed");

@@ -86,7 +86,7 @@ namespace AwsSyncer
 
             sw.Stop();
 
-            Console.WriteLine($"Bucket {_pathManager.Bucket} contains {s3Blobs.Count}/{statistics.Count} items {SizeConversion.BytesToGiB(statistics.TotalSize):F2}GiB in {sw.Elapsed}");
+            Console.WriteLine($"Bucket {_pathManager.Bucket} contains {s3Blobs.Count}/{statistics.Count} items {statistics.TotalSize.BytesToGiB():F2}GiB in {sw.Elapsed}");
 
             return s3Blobs;
         }

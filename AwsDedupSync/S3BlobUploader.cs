@@ -1,4 +1,4 @@
-// Copyright (c) 2016 Henric Jungheim <software@henric.org>
+// Copyright (c) 2016-2017 Henric Jungheim <software@henric.org>
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a
 // copy of this software and associated documentation files (the "Software"),
@@ -104,7 +104,7 @@ namespace AwsDedupSync
 #if DEBUG
             var uploadDoneTask = uploader.Completion
                 .ContinueWith(
-                    _ => Debug.WriteLine($"Done uploading blobs: {blobCount} items {SizeConversion.BytesToGiB(blobTotalSize):F2}GiB"), cancellationToken);
+                    _ => Debug.WriteLine($"Done uploading blobs: {blobCount} items {blobTotalSize.BytesToGiB():F2}GiB"), cancellationToken);
 
             tasks.Add(uploadDoneTask);
 #endif

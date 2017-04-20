@@ -1,4 +1,4 @@
-// Copyright (c) 2016 Henric Jungheim <software@henric.org>
+// Copyright (c) 2016-2017 Henric Jungheim <software@henric.org>
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a
 // copy of this software and associated documentation files (the "Software"),
@@ -123,7 +123,7 @@ namespace AwsSyncer
                 if (fingerprint.Size != fileInfo.Length)
                     return null;
 
-                Debug.WriteLine($"FileFingerprintManager.ProcessFileAsync({fileInfo.FullName}) scanned {SizeConversion.BytesToMiB(fingerprint.Size):F3}MiB in {sw.Elapsed}");
+                Debug.WriteLine($"FileFingerprintManager.ProcessFileAsync({fileInfo.FullName}) scanned {fingerprint.Size.BytesToMiB():F3}MiB in {sw.Elapsed}");
 
                 var fileFingerprint = new FileFingerprint(fileInfo.FullName, fileInfo.LastWriteTimeUtc, fingerprint);
 
