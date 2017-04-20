@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2014-2016 Henric Jungheim <software@henric.org>
+﻿// Copyright (c) 2014-2017 Henric Jungheim <software@henric.org>
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a
 // copy of this software and associated documentation files (the "Software"),
@@ -19,14 +19,16 @@
 // DEALINGS IN THE SOFTWARE.
 
 using System;
+using System.Collections.Generic;
 using System.Configuration;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using System.Net;
 using System.Text;
 using System.Threading;
+using System.Threading.Tasks;
 using AwsSyncer;
-using System.Linq;
 
 namespace AwsDedupSync
 {
@@ -34,6 +36,18 @@ namespace AwsDedupSync
     {
         static readonly Encoding Utf8NoBom = new UTF8Encoding(false);
         static readonly string[] ExcludeFiles = { "desktop.ini", "Thumbs.db" };
+
+        static Func<CancellationToken, Task> CreateSyncRunner(string[] paths)
+        {
+            var bucket = ConfigurationManager.AppSettings["Bucket"];
+
+            if (string.IsNullOrWhiteSpace(bucket))
+                throw new KeyNotFoundException("No bucket name found in the application settings");
+
+            var syncer = new S3PathSyncer();
+
+            return ct => syncer.SyncPathsAsync(bucket, paths, fi => !ExcludeFiles.Contains(fi.Name, StringComparer.OrdinalIgnoreCase), ct);
+        }
 
         static void Main(string[] args)
         {
@@ -46,23 +60,15 @@ namespace AwsDedupSync
             {
                 Console.SetOut(writer);
 
-                var bucket = ConfigurationManager.AppSettings["Bucket"];
-
-                if (string.IsNullOrWhiteSpace(bucket))
-                {
-                    Console.WriteLine("No bucket name found in the application settings");
-                    return;
-                }
+                var syncRunner = CreateSyncRunner(args);
 
                 var sw = new Stopwatch();
 
                 try
                 {
-                    var syncer = new S3PathSyncer();
-
                     sw.Start();
 
-                    ConsoleCancel.RunAsync(ct => syncer.SyncPathsAsync(bucket, args, fi => !ExcludeFiles.Contains(fi.Name, StringComparer.OrdinalIgnoreCase), ct), TimeSpan.Zero).Wait();
+                    ConsoleCancel.RunAsync(syncRunner, TimeSpan.Zero).GetAwaiter().GetResult();
 
                     sw.Stop();
                 }
