@@ -23,12 +23,12 @@ using System.Collections.Generic;
 using System.Configuration;
 using System.Diagnostics;
 using System.IO;
+using System.IO.Compression;
 using System.Threading;
 using System.Threading.Tasks;
 using AwsSyncer.Utility;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Bson;
-using SevenZip;
 
 namespace AwsSyncer.FileBlobs
 {
@@ -41,7 +41,7 @@ namespace AwsSyncer.FileBlobs
         Stream _bsonFile;
         Stream _bufferStream;
         BsonDataWriter _jsonWriter;
-        LzmaEncodeStream _lzmaEncodeStream;
+        DeflateStream _encodeStream;
 
         public BsonFileFingerprintStore()
         {
@@ -183,8 +183,8 @@ namespace AwsSyncer.FileBlobs
                         continue;
 
                     using (var fileStream = OpenBsonFileForRead(fileInfo))
-                    using (var lzmaDecodeStream = new LzmaDecodeStream(fileStream))
-                    using (var bs = new SequentialReadStream(lzmaDecodeStream))
+                    using (var decodeStream = new DeflateStream(fileStream, CompressionMode.Decompress))
+                    using (var bs = new SequentialReadStream(decodeStream))
                     using (var br = new BsonDataReader(bs) { DateTimeKindHandling = DateTimeKind.Utc, SupportMultipleContent = true })
                     {
                         while (await br.ReadAsync(cancellationToken).ConfigureAwait(false))
@@ -225,7 +225,7 @@ namespace AwsSyncer.FileBlobs
                 {
                     needRebuild = true;
                 }
-                catch (LzmaException)
+                catch (InvalidDataException)
                 {
                     needRebuild = true;
                 }
@@ -421,11 +421,11 @@ namespace AwsSyncer.FileBlobs
                 _bsonFile = OpenBsonFileForWrite(fi);
             }
 
-            if (null == _lzmaEncodeStream)
-                _lzmaEncodeStream = new LzmaEncodeStream(_bsonFile);
+            if (null == _encodeStream)
+                _encodeStream = new DeflateStream(_bsonFile, CompressionLevel.Optimal);
 
             if (null == _bufferStream)
-                _bufferStream = new BufferedStream(_lzmaEncodeStream, 512 * 1024);
+                _bufferStream = new BufferedStream(_encodeStream, 512 * 1024);
 
             if (null == _jsonWriter)
                 _jsonWriter = new BsonDataWriter(_bufferStream) { DateTimeKindHandling = DateTimeKind.Utc };
@@ -441,8 +441,8 @@ namespace AwsSyncer.FileBlobs
             var bufferStream = _bufferStream;
             _bufferStream = null;
 
-            var lzmaEncodeStream = _lzmaEncodeStream;
-            _lzmaEncodeStream = null;
+            var encodeStream = _encodeStream;
+            _encodeStream = null;
 
             var bsonFile = _bsonFile;
             _bsonFile = null;
@@ -456,7 +456,7 @@ namespace AwsSyncer.FileBlobs
 
             bufferStream?.Close();
 
-            lzmaEncodeStream?.Close();
+            encodeStream?.Close();
 
             bsonFile?.Close();
         }
