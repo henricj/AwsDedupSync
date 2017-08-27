@@ -93,7 +93,7 @@ namespace AwsSyncer.Utility
 
         public override async Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken)
         {
-            var length = await base.ReadAsync(buffer, offset, count, cancellationToken).ConfigureAwait(false);
+            var length = await _baseStream.ReadAsync(buffer, offset, count, cancellationToken).ConfigureAwait(false);
 
             if (length > 0)
                 _position += length;
