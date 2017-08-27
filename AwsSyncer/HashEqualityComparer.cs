@@ -1,4 +1,4 @@
-// Copyright (c) 2016 Henric Jungheim <software@henric.org>
+// Copyright (c) 2016-2017 Henric Jungheim <software@henric.org>
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a
 // copy of this software and associated documentation files (the "Software"),
@@ -24,6 +24,7 @@ using System.Linq;
 
 namespace AwsSyncer
 {
+    /// <inheritdoc />
     /// <summary>
     ///     Generate a quick hash code for byte arrays that are known
     ///     to be uniformly random.

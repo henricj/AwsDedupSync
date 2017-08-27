@@ -1,4 +1,4 @@
-// Copyright (c) 2016 Henric Jungheim <software@henric.org>
+// Copyright (c) 2016-2017 Henric Jungheim <software@henric.org>
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a
 // copy of this software and associated documentation files (the "Software"),
@@ -25,7 +25,7 @@ namespace AwsSyncer
 {
     public static class AwsManagerFactory
     {
-        public static AwsManager Create(string bucket)
+        public static IAwsManager Create(string bucket)
         {
             var amazonS3 = new AmazonS3Client();
 

@@ -1,4 +1,4 @@
-// Copyright (c) 2016 Henric Jungheim <software@henric.org>
+// Copyright (c) 2016-2017 Henric Jungheim <software@henric.org>
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a
 // copy of this software and associated documentation files (the "Software"),
@@ -30,8 +30,10 @@ namespace AwsSyncer
 {
     public static class DirectoryScanner
     {
-        public static Task GenerateAnnotatedPathsAsync(IEnumerable<CollectionPath> paths, Func<FileInfo, bool> filePredicate,
-            ITargetBlock<AnnotatedPath[]> filePathTargetBlock, CancellationToken cancellationToken)
+        public static Task GenerateAnnotatedPathsAsync(IEnumerable<CollectionPath> paths,
+            Func<FileInfo, bool> filePredicate,
+            ITargetBlock<AnnotatedPath[]> filePathTargetBlock,
+            CancellationToken cancellationToken)
         {
             var shuffleBlock = new TransformBlock<AnnotatedPath[], AnnotatedPath[]>(
                 filenames =>
@@ -55,8 +57,10 @@ namespace AwsSyncer
             return PostAllFilePathsAsync(paths, filePredicate, batcher, cancellationToken);
         }
 
-        static Task PostAllFilePathsAsync(IEnumerable<CollectionPath> paths, Func<FileInfo, bool> filePredicate,
-            ITargetBlock<AnnotatedPath> filePathTargetBlock, CancellationToken cancellationToken)
+        static Task PostAllFilePathsAsync(IEnumerable<CollectionPath> paths,
+            Func<FileInfo, bool> filePredicate,
+            ITargetBlock<AnnotatedPath> filePathTargetBlock,
+            CancellationToken cancellationToken)
         {
             var scanTasks = paths
                 .Select<CollectionPath, Task>(path =>
@@ -81,7 +85,9 @@ namespace AwsSyncer
 
             var task = Task.WhenAll(scanTasks);
 
-            var completeTask = task.ContinueWith(_ => filePathTargetBlock.Complete());
+            var localFilePathTargetBlock = filePathTargetBlock;
+
+            var completeTask = task.ContinueWith(_ => localFilePathTargetBlock.Complete(), cancellationToken);
 
             TaskCollector.Default.Add(completeTask, "PostAllFilePathsAsync");
 

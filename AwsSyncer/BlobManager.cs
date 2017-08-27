@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2014-2016 Henric Jungheim <software@henric.org>
+﻿// Copyright (c) 2014-2017 Henric Jungheim <software@henric.org>
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a
 // copy of this software and associated documentation files (the "Software"),
@@ -33,10 +33,7 @@ namespace AwsSyncer
 
         public BlobManager(FileFingerprintManager fileFingerprintManager)
         {
-            if (null == fileFingerprintManager)
-                throw new ArgumentNullException(nameof(fileFingerprintManager));
-
-            _fileFingerprintManager = fileFingerprintManager;
+            _fileFingerprintManager = fileFingerprintManager ?? throw new ArgumentNullException(nameof(fileFingerprintManager));
         }
 
         #region IDisposable Members
@@ -48,7 +45,8 @@ namespace AwsSyncer
 
         #endregion
 
-        public async Task LoadAsync(CollectionPath[] paths, Func<FileInfo, bool> filePredicate,
+        public async Task LoadAsync(CollectionPath[] paths,
+            Func<FileInfo, bool> filePredicate,
             ITargetBlock<Tuple<AnnotatedPath, IFileFingerprint>> joinedTargetBlock,
             CancellationToken cancellationToken)
         {
@@ -58,7 +56,8 @@ namespace AwsSyncer
                 .ConfigureAwait(false);
         }
 
-        async Task GenerateFileFingerprintsAsync(CollectionPath[] paths, Func<FileInfo, bool> filePredicate,
+        async Task GenerateFileFingerprintsAsync(CollectionPath[] paths,
+            Func<FileInfo, bool> filePredicate,
             ITargetBlock<Tuple<AnnotatedPath, IFileFingerprint>> joinedTargetBlock,
             CancellationToken cancellationToken)
         {

@@ -1,4 +1,4 @@
-// Copyright (c) 2016 Henric Jungheim <software@henric.org>
+// Copyright (c) 2016-2017 Henric Jungheim <software@henric.org>
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a
 // copy of this software and associated documentation files (the "Software"),
@@ -36,10 +36,7 @@ namespace AwsSyncer
 
         public LinkFingerprintJoiner(ITargetBlock<Tuple<AnnotatedPath, IFileFingerprint>> targetBlock)
         {
-            if (null == targetBlock)
-                throw new ArgumentNullException(nameof(targetBlock));
-
-            _targetBlock = targetBlock;
+            _targetBlock = targetBlock ?? throw new ArgumentNullException(nameof(targetBlock));
 
             AnnotatedPathsBlock = new ActionBlock<AnnotatedPath[]>(
                 aps => Task.WhenAll(aps.Select(SetAnnotatedPathAsync)),

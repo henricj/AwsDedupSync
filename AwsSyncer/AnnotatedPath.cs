@@ -28,7 +28,6 @@ namespace AwsSyncer
         public string Collection { get; set; }
         public string RelativePath { get; set; }
 
-
         public override string ToString()
         {
             return '[' + Collection + ']' + RelativePath;

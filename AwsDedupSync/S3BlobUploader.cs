@@ -34,14 +34,13 @@ namespace AwsDedupSync
 
         public S3BlobUploader(S3Settings s3Settings)
         {
-            if (s3Settings == null)
-                throw new ArgumentNullException(nameof(s3Settings));
-
-            _s3Settings = s3Settings;
+            _s3Settings = s3Settings ?? throw new ArgumentNullException(nameof(s3Settings));
         }
 
-        public Task UploadBlobsAsync(AwsManager awsManager, ISourceBlock<Tuple<IFileFingerprint, AnnotatedPath>> uniqueBlobBlock,
-            IReadOnlyDictionary<string, string> knowObjects, CancellationToken cancellationToken)
+        public Task UploadBlobsAsync(IAwsManager awsManager,
+            ISourceBlock<Tuple<IFileFingerprint, AnnotatedPath>> uniqueBlobBlock,
+            IReadOnlyDictionary<string, string> knowObjects,
+            CancellationToken cancellationToken)
         {
             var blobCount = 0;
             var blobTotalSize = 0L;
@@ -49,8 +48,7 @@ namespace AwsDedupSync
             var builderBlock = new TransformBlock<Tuple<IFileFingerprint, AnnotatedPath>, S3Blobs.IUploadBlobRequest>(
                 tuple =>
                 {
-                    string etag;
-                    var exists = knowObjects.TryGetValue(tuple.Item1.Fingerprint.Key(), out etag);
+                    var exists = knowObjects.TryGetValue(tuple.Item1.Fingerprint.Key(), out var etag);
 
                     //Debug.WriteLine($"{tuple.Item1.FullFilePath} {(exists ? "already exists" : "scheduled for upload")}");
 
@@ -67,7 +65,7 @@ namespace AwsDedupSync
 
                         var expectedETag = tuple.Item1.Fingerprint.S3ETag();
 
-                        if (string.Equals(expectedETag, etag, StringComparison.InvariantCultureIgnoreCase))
+                        if (string.Equals(expectedETag, etag, StringComparison.OrdinalIgnoreCase))
                             return null;
 
                         Console.WriteLine($"ERROR: {tuple.Item1.FullFilePath} tag mismatch {etag}, expected {expectedETag} {tuple.Item1.Fingerprint.Key().Substring(0, 12)}");
@@ -99,7 +97,7 @@ namespace AwsDedupSync
 
             uniqueBlobBlock.LinkTo(builderBlock, new DataflowLinkOptions { PropagateCompletion = true });
 
-            var tasks = new List<Task>();
+            var tasks = new List<Task> { uploader.Completion };
 
 #if DEBUG
             var uploadDoneTask = uploader.Completion
@@ -109,12 +107,11 @@ namespace AwsDedupSync
             tasks.Add(uploadDoneTask);
 #endif
 
-            tasks.Add(uploader.Completion);
 
             return Task.WhenAll(tasks);
         }
 
-        async Task UploadBlobAsync(AwsManager awsManager, S3Blobs.IUploadBlobRequest uploadBlobRequest, CancellationToken cancellationToken)
+        async Task UploadBlobAsync(IAwsManager awsManager, S3Blobs.IUploadBlobRequest uploadBlobRequest, CancellationToken cancellationToken)
         {
             if (null == uploadBlobRequest)
                 return;

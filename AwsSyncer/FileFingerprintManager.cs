@@ -67,8 +67,7 @@ namespace AwsSyncer
 
         IFileFingerprint GetCachedFileFingerprint(FileInfo fileInfo)
         {
-            IFileFingerprint fileFingerprint;
-            if (!_previouslyCachedFileFingerprints.TryGetValue(fileInfo.FullName, out fileFingerprint))
+            if (!_previouslyCachedFileFingerprints.TryGetValue(fileInfo.FullName, out var fileFingerprint))
                 return null;
 
             if (fileFingerprint.Fingerprint.Size != fileInfo.Length || fileFingerprint.LastModifiedUtc != fileInfo.LastWriteTimeUtc)
@@ -146,7 +145,8 @@ namespace AwsSyncer
         }
 
         public Task GenerateFileFingerprintsAsync(ISourceBlock<AnnotatedPath[]> annotatedPathSourceBlock,
-            ITargetBlock<IFileFingerprint> fileFingerprintTargetBlock, CancellationToken cancellationToken)
+            ITargetBlock<IFileFingerprint> fileFingerprintTargetBlock,
+            CancellationToken cancellationToken)
         {
             var bufferBlock = new BufferBlock<IFileFingerprint>(new DataflowBlockOptions { CancellationToken = cancellationToken });
 
@@ -161,12 +161,12 @@ namespace AwsSyncer
 
 #if DEBUG
             var task = storeBatchBlock.Completion
-                .ContinueWith(_ => Debug.WriteLine("FileFingerprintManager.GenerateFileFingerprintsAsync() storeBatchBlock completed"));
+                .ContinueWith(_ => Debug.WriteLine("FileFingerprintManager.GenerateFileFingerprintsAsync() storeBatchBlock completed"), CancellationToken.None);
 
             TaskCollector.Default.Add(task, "FileFingerprintManager.GenerateFileFingerprintsAsync storeBatchBlock");
 
             task = bufferBlock.Completion
-                .ContinueWith(_ => Debug.WriteLine("FileFingerprintManager.GenerateFileFingerprintsAsync() bufferBlock completed"));
+                .ContinueWith(_ => Debug.WriteLine("FileFingerprintManager.GenerateFileFingerprintsAsync() bufferBlock completed"), CancellationToken.None);
 
             TaskCollector.Default.Add(task, "FileFingerprintManager.GenerateFileFingerprintsAsync bufferBlock");
 #endif // DEBUG
@@ -204,7 +204,8 @@ namespace AwsSyncer
         }
 
         async Task TransformAnnotatedPathsToFileFingerprint(ISourceBlock<AnnotatedPath[]> annotatedPathSourceBlock,
-            ITargetBlock<IFileFingerprint> fileFingerprintTargetBlock, CancellationToken cancellationToken)
+            ITargetBlock<IFileFingerprint> fileFingerprintTargetBlock,
+            CancellationToken cancellationToken)
         {
             try
             {

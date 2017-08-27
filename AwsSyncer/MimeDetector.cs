@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2014-2016 Henric Jungheim <software@henric.org>
+﻿// Copyright (c) 2014-2017 Henric Jungheim <software@henric.org>
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a
 // copy of this software and associated documentation files (the "Software"),
@@ -28,6 +28,7 @@ using Microsoft.Win32;
 
 namespace AwsSyncer
 {
+    // ReSharper disable once ClassNeverInstantiated.Global
     public class MimeDetector
     {
         static readonly string DefaultMapping = MimeMapping.GetMimeMapping(".*");
@@ -629,16 +630,12 @@ namespace AwsSyncer
             {
                 using (var key = Registry.ClassesRoot.OpenSubKey(extension))
                 {
-                    if (null == key)
-                        continue;
-
-                    var mimeType = key.GetValue("Content Type") as string;
+                    var mimeType = key?.GetValue("Content Type") as string;
 
                     if (string.IsNullOrWhiteSpace(mimeType))
                         continue;
 
-                    string existingMimeType;
-                    if (_mimeTypes.TryGetValue(extension, out existingMimeType))
+                    if (_mimeTypes.TryGetValue(extension, out var existingMimeType))
                     {
                         if (string.Equals(mimeType, existingMimeType, StringComparison.OrdinalIgnoreCase))
                             continue;
@@ -660,7 +657,7 @@ namespace AwsSyncer
 
             var ext = Path.GetExtension(filename);
 
-            if (null == ext)
+            if (string.IsNullOrEmpty(ext))
                 return DefaultMapping;
 
             if (_mimeTypes.TryGetValue(ext, out mimeType))

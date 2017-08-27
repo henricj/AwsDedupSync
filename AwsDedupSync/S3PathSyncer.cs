@@ -1,4 +1,4 @@
-// Copyright (c) 2014-2016 Henric Jungheim <software@henric.org>
+// Copyright (c) 2014-2017 Henric Jungheim <software@henric.org>
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a
 // copy of this software and associated documentation files (the "Software"),
@@ -31,10 +31,11 @@ namespace AwsDedupSync
 {
     public class S3PathSyncer
     {
-        public static readonly DataflowLinkOptions DataflowLinkOptionsPropagateEnabled = new DataflowLinkOptions
-        {
-            PropagateCompletion = true
-        };
+        static readonly DataflowLinkOptions DataflowLinkOptionsPropagateEnabled
+            = new DataflowLinkOptions
+            {
+                PropagateCompletion = true
+            };
 
         readonly S3BlobUploader _s3BlobUploader;
         readonly S3LinkCreator _s3LinkCreator;
@@ -83,7 +84,7 @@ namespace AwsDedupSync
                             }, new ExecutionDataflowBlockOptions { CancellationToken = cancellationToken });
 
                         var uniqueCompletionTask = uniqueFingerprintFilterBlock
-                            .Completion.ContinueWith(_ => { uniqueFingerprintBlock.Complete(); });
+                            .Completion.ContinueWith(_ => { uniqueFingerprintBlock.Complete(); }, CancellationToken.None);
 
                         TaskCollector.Default.Add(uniqueCompletionTask, "Unique filter completion");
 
@@ -136,7 +137,7 @@ namespace AwsDedupSync
 
         static async Task WaitAllWithWake(ICollection<Task> tasks)
         {
-            for (;;)
+            for (; ; )
             {
                 var pendingTasks = tasks.Where(t => !t.IsCompleted).ToArray();
 

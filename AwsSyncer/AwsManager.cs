@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2014-2016 Henric Jungheim <software@henric.org>
+﻿// Copyright (c) 2014-2017 Henric Jungheim <software@henric.org>
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a
 // copy of this software and associated documentation files (the "Software"),
@@ -28,7 +28,17 @@ using Amazon.S3;
 
 namespace AwsSyncer
 {
-    public sealed class AwsManager : IDisposable
+    public interface IAwsManager : IDisposable
+    {
+        Task<IReadOnlyDictionary<string, string>> ScanAsync(CancellationToken cancellationToken);
+        S3Blobs.IUploadBlobRequest BuildUploadBlobRequest(Tuple<IFileFingerprint, AnnotatedPath> tuple);
+        Task UploadBlobAsync(S3Blobs.IUploadBlobRequest uploadBlobRequest, CancellationToken cancellationToken);
+        Task<IReadOnlyDictionary<string, string>> GetLinksAsync(string name, CancellationToken cancellationToken);
+        S3Links.ICreateLinkRequest BuildLinkRequest(string collection, string relativePath, IFileFingerprint fileFingerprint, string existingETag = null);
+        Task CreateLinkAsync(S3Links.ICreateLinkRequest createLinkRequest, CancellationToken cancellationToken);
+    }
+
+    public sealed class AwsManager : IAwsManager
     {
         readonly IAmazonS3 _amazonS3;
         readonly IPathManager _pathManager;
@@ -37,13 +47,8 @@ namespace AwsSyncer
 
         public AwsManager(IAmazonS3 amazonS3, IPathManager pathManager)
         {
-            if (null == amazonS3)
-                throw new ArgumentNullException(nameof(amazonS3));
-            if (null == pathManager)
-                throw new ArgumentNullException(nameof(pathManager));
-
-            _pathManager = pathManager;
-            _amazonS3 = amazonS3;
+            _amazonS3 = amazonS3 ?? throw new ArgumentNullException(nameof(amazonS3));
+            _pathManager = pathManager ?? throw new ArgumentNullException(nameof(pathManager));
 
             var storageClass = S3StorageClass.Standard;
             var storageClassString = ConfigurationManager.AppSettings["AwsStorageClass"];

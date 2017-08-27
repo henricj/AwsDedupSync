@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2012-2015 Henric Jungheim <software@henric.org>
+﻿// Copyright (c) 2012-2017 Henric Jungheim <software@henric.org>
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a
 // copy of this software and associated documentation files (the "Software"),
@@ -68,7 +68,7 @@ namespace AwsSyncer
         [Conditional("DEBUG")]
         void CheckInvariant()
         {
-            Debug.Assert(_isLocked || (null != _pending && 0 == _pending.Count),
+            Debug.Assert(_isLocked || null != _pending && 0 == _pending.Count,
                 "Either we are locked or we have an empty queue");
         }
 
@@ -143,7 +143,7 @@ namespace AwsSyncer
 
         void Release()
         {
-            for (;;)
+            for (; ; )
             {
                 TaskCompletionSource<IDisposable> tcs;
 
@@ -195,8 +195,7 @@ namespace AwsSyncer
             {
                 var asyncLock = Interlocked.Exchange(ref _asyncLock, null);
 
-                if (null != asyncLock)
-                    asyncLock.Release();
+                asyncLock?.Release();
             }
 
             #endregion

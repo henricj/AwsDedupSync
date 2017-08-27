@@ -1,4 +1,4 @@
-// Copyright (c) 2016 Henric Jungheim <software@henric.org>
+// Copyright (c) 2016-2017 Henric Jungheim <software@henric.org>
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a
 // copy of this software and associated documentation files (the "Software"),
@@ -32,8 +32,7 @@ namespace AwsSyncer
 
         public SequentialReadStream(Stream baseStream)
         {
-            if (baseStream == null) throw new ArgumentNullException(nameof(baseStream));
-            _baseStream = baseStream;
+            _baseStream = baseStream ?? throw new ArgumentNullException(nameof(baseStream));
         }
 
         public override bool CanRead => _baseStream.CanRead;
@@ -41,7 +40,11 @@ namespace AwsSyncer
         public override bool CanWrite => true;
         public override long Length => _baseStream.Length;
 
-        public override long Position { get { return _position; } set { throw new NotSupportedException(); } }
+        public override long Position
+        {
+            get => _position;
+            set => throw new NotSupportedException();
+        }
 
         public override void Flush()
         {

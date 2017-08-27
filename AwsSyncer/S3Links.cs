@@ -1,4 +1,4 @@
-// Copyright (c) 2016 Henric Jungheim <software@henric.org>
+// Copyright (c) 2016-2017 Henric Jungheim <software@henric.org>
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a
 // copy of this software and associated documentation files (the "Software"),
@@ -37,13 +37,8 @@ namespace AwsSyncer
         public S3Links(IAmazonS3 amazonS3, IPathManager pathManager, S3StorageClass s3StorageClass)
             : base(amazonS3)
         {
-            if (null == pathManager)
-                throw new ArgumentNullException(nameof(pathManager));
-            if (null == s3StorageClass)
-                throw new ArgumentNullException(nameof(s3StorageClass));
-
-            _pathManager = pathManager;
-            _s3StorageClass = s3StorageClass;
+            _pathManager = pathManager ?? throw new ArgumentNullException(nameof(pathManager));
+            _s3StorageClass = s3StorageClass ?? throw new ArgumentNullException(nameof(s3StorageClass));
         }
 
         public async Task<IReadOnlyDictionary<string, string>> ListAsync(string name, CancellationToken cancellationToken)
@@ -56,7 +51,7 @@ namespace AwsSyncer
                 Prefix = _pathManager.GetTreeNamePrefix(name)
             };
 
-            for (;;)
+            for (; ; )
             {
                 var response = await AmazonS3.ListObjectsAsync(request, cancellationToken).ConfigureAwait(false);
 

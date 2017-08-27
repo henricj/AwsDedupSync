@@ -1,4 +1,4 @@
-// Copyright (c) 2012-2014 Henric Jungheim <software@henric.org>
+// Copyright (c) 2012-2017 Henric Jungheim <software@henric.org>
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a
 // copy of this software and associated documentation files (the "Software"),
@@ -54,11 +54,12 @@ namespace AwsSyncer
         [Conditional("DEBUG")]
         public void Wait()
         {
-            KeyValuePair<Task, string>[] tasks;
+            KeyValuePair<Task, string>[] tasks = null;
 
             lock (_lock)
             {
-                tasks = _tasks.ToArray();
+                if (_tasks.Count > 0)
+                    tasks = _tasks.ToArray();
             }
 
             if (null == tasks || 0 == tasks.Length)

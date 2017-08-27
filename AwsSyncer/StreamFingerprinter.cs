@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2014 Henric Jungheim <software@henric.org>
+﻿// Copyright (c) 2014, 2017 Henric Jungheim <software@henric.org>
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a
 // copy of this software and associated documentation files (the "Software"),
@@ -45,7 +45,7 @@ namespace AwsSyncer
 
                 var readTask = stream.ReadAsync(buffers[index], 0, buffers[index].Length, cancellationToken);
 
-                for (;;)
+                for (; ; )
                 {
                     var length = await readTask.ConfigureAwait(false);
 
@@ -61,11 +61,11 @@ namespace AwsSyncer
 
                     totalLength += length;
 
-                    sha3.TransformBlock(buffer, 0, length, null, 0);
+                    sha3.TransformBlock(buffer, 0, length, buffer, 0);
 
-                    sha256.TransformBlock(buffer, 0, length, null, 0);
+                    sha256.TransformBlock(buffer, 0, length, buffer, 0);
 
-                    md5.TransformBlock(buffer, 0, length, null, 0);
+                    md5.TransformBlock(buffer, 0, length, buffer, 0);
                 }
 
                 sha3.TransformFinalBlock(buffers[0], 0, 0);
@@ -85,9 +85,7 @@ namespace AwsSyncer
 
         byte[] AllocateBuffer()
         {
-            byte[] buffer;
-
-            if (!_buffers.TryPop(out buffer))
+            if (!_buffers.TryPop(out var buffer))
                 buffer = new byte[BufferSize];
 
             return buffer;

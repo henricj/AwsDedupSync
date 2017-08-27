@@ -1,4 +1,4 @@
-// Copyright (c) 2016 Henric Jungheim <software@henric.org>
+// Copyright (c) 2016-2017 Henric Jungheim <software@henric.org>
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a
 // copy of this software and associated documentation files (the "Software"),
@@ -35,10 +35,7 @@ namespace AwsSyncer
 
         public FileSequence(DirectoryInfo directory)
         {
-            if (null == directory)
-                throw new ArgumentNullException(nameof(directory));
-
-            _directory = directory;
+            _directory = directory ?? throw new ArgumentNullException(nameof(directory));
         }
 
         public IEnumerable<FileInfo> Files => _files;
@@ -56,8 +53,7 @@ namespace AwsSyncer
             _files = _directory.EnumerateFiles()
                 .Select(file =>
                 {
-                    int fileNumber;
-                    if (!int.TryParse(file.Name, NumberStyles.Integer, CultureInfo.InvariantCulture, out fileNumber))
+                    if (!int.TryParse(file.Name, NumberStyles.Integer, CultureInfo.InvariantCulture, out var fileNumber))
                         return null;
 
                     if (fileNumber < 1)

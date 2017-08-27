@@ -1,4 +1,4 @@
-// Copyright (c) 2016 Henric Jungheim <software@henric.org>
+// Copyright (c) 2016-2017 Henric Jungheim <software@henric.org>
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a
 // copy of this software and associated documentation files (the "Software"),
@@ -29,8 +29,10 @@ namespace AwsSyncer
 {
     public class LinkManager
     {
-        public async Task CreateLinksAsync(AwsManager awsManager, ISourceBlock<Tuple<AnnotatedPath, IFileFingerprint>> blobSourceBlock,
-            bool actuallyWrite, CancellationToken cancellationToken)
+        public async Task CreateLinksAsync(IAwsManager awsManager,
+            ISourceBlock<Tuple<AnnotatedPath, IFileFingerprint>> blobSourceBlock,
+            bool actuallyWrite,
+            CancellationToken cancellationToken)
         {
             var collectionBlocks = new Dictionary<string, ITargetBlock<Tuple<AnnotatedPath, IFileFingerprint>>>();
             var tasks = new List<Task>();
@@ -42,8 +44,7 @@ namespace AwsSyncer
                 if (string.IsNullOrEmpty(collection))
                     return;
 
-                ITargetBlock<Tuple<AnnotatedPath, IFileFingerprint>> collectionBlock;
-                if (!collectionBlocks.TryGetValue(collection, out collectionBlock))
+                if (!collectionBlocks.TryGetValue(collection, out var collectionBlock))
                 {
                     var bufferBlock = new BufferBlock<Tuple<AnnotatedPath, IFileFingerprint>>();
 
@@ -73,8 +74,11 @@ namespace AwsSyncer
             Debug.WriteLine("S3LinkCreateor.CreateLinkAsync() all link blocks are done");
         }
 
-        async Task CreateLinksBlockAsync(AwsManager awsManager, string collection,
-            ISourceBlock<Tuple<AnnotatedPath, IFileFingerprint>> collectionBlock, bool actuallyWrite, CancellationToken cancellationToken)
+        async Task CreateLinksBlockAsync(IAwsManager awsManager,
+            string collection,
+            ISourceBlock<Tuple<AnnotatedPath, IFileFingerprint>> collectionBlock,
+            bool actuallyWrite,
+            CancellationToken cancellationToken)
         {
             var links = await awsManager.GetLinksAsync(collection, cancellationToken).ConfigureAwait(false);
 
@@ -106,8 +110,7 @@ namespace AwsSyncer
                     if (relativePath.StartsWith("/", StringComparison.Ordinal))
                         throw new InvalidOperationException($"Create link for invalid path {relativePath}");
 
-                    string eTag;
-                    links.TryGetValue(relativePath, out eTag);
+                    links.TryGetValue(relativePath, out var eTag);
 
                     return awsManager.BuildLinkRequest(collection, relativePath, file, eTag);
                 },
@@ -123,7 +126,7 @@ namespace AwsSyncer
             Debug.WriteLine($"Link handler for {collection} is done");
         }
 
-        async Task CreateLinkAsync(AwsManager awsManager, S3Links.ICreateLinkRequest createLinkRequest, bool actuallyWrite, CancellationToken cancellationToken)
+        async Task CreateLinkAsync(IAwsManager awsManager, S3Links.ICreateLinkRequest createLinkRequest, bool actuallyWrite, CancellationToken cancellationToken)
         {
             if (cancellationToken.IsCancellationRequested)
                 return;

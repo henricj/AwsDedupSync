@@ -1,4 +1,4 @@
-// Copyright (c) 2016 Henric Jungheim <software@henric.org>
+// Copyright (c) 2016-2017 Henric Jungheim <software@henric.org>
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a
 // copy of this software and associated documentation files (the "Software"),
@@ -57,7 +57,7 @@ namespace AwsSyncer
 
         public string BlobPrefix
         {
-            get { return _blobPrefix; }
+            get => _blobPrefix;
             set
             {
                 if (string.IsNullOrWhiteSpace(value))
@@ -69,7 +69,7 @@ namespace AwsSyncer
 
         public string TreePrefix
         {
-            get { return _treePrefix; }
+            get => _treePrefix;
 
             set
             {
