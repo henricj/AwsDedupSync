@@ -56,7 +56,7 @@ namespace AwsDedupSync
 
             Console.Out.Close();
             using (var writer = new StreamWriter(Console.OpenStandardOutput(), Utf8NoBom, 4 * 4096))
-            using (new Timer(_ => TaskCollector.Default.Add(Console.Out.FlushAsync(), "Console Flush"), null, 750, 750))
+            using (new Timer(_ => TaskCollector.Default.Add(Console.Out.FlushAsync(), "Console Flush"), null, 1000, 1000))
             {
                 Console.SetOut(writer);
 
