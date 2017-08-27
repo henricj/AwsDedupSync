@@ -1,4 +1,4 @@
-// Copyright (c) 2016-2017 Henric Jungheim <software@henric.org>
+// Copyright (c) 2016 Henric Jungheim <software@henric.org>
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a
 // copy of this software and associated documentation files (the "Software"),
@@ -18,22 +18,16 @@
 // FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
-using System;
-using Amazon.S3;
-
-namespace AwsSyncer
+namespace AwsSyncer.Types
 {
-    public static class AwsManagerFactory
+    public class CollectionPath
     {
-        public static IAwsManager Create(string bucket)
+        public string Collection { get; set; }
+        public string Path { get; set; }
+
+        public override string ToString()
         {
-            var amazonS3 = new AmazonS3Client();
-
-            var s3Url = amazonS3.Config.DetermineServiceURL();
-
-            var pathManager = new PathManager(new Uri(s3Url, UriKind.Absolute), bucket);
-
-            return new AwsManager(amazonS3, pathManager);
+            return '[' + Collection + ']' + Path;
         }
     }
 }

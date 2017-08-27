@@ -1,4 +1,4 @@
-// Copyright (c) 2014-2017 Henric Jungheim <software@henric.org>
+// Copyright (c) 2016-2017 Henric Jungheim <software@henric.org>
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a
 // copy of this software and associated documentation files (the "Software"),
@@ -18,21 +18,47 @@
 // FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
-namespace AwsSyncer
-{
-    public static class SizeConversion
-    {
-        const double ToGiB = 1.0 / (1024 * 1024 * 1024);
-        const double ToMiB = 1.0 / (1024 * 1024);
+using System;
+using System.Collections.Generic;
+using System.Linq;
 
-        public static double BytesToGiB(this long value)
+namespace AwsSyncer.Utility
+{
+    /// <inheritdoc />
+    /// <summary>
+    ///     Generate a quick hash code for byte arrays that are known
+    ///     to be uniformly random.
+    /// </summary>
+    public sealed class HashEqualityComparer : IEqualityComparer<byte[]>
+    {
+        public bool Equals(byte[] x, byte[] y)
         {
-            return value * ToGiB;
+            if (ReferenceEquals(x, y))
+                return true;
+
+            if (ReferenceEquals(x, null) || ReferenceEquals(null, y))
+                return false;
+
+            if (x.Length != y.Length)
+                return false;
+
+            return x.SequenceEqual(y);
         }
 
-        public static double BytesToMiB(this long value)
+        public int GetHashCode(byte[] obj)
         {
-            return value * ToMiB;
+            if (obj.Length >= sizeof(int))
+                return BitConverter.ToInt32(obj, 0);
+
+            var code = 0;
+
+            foreach (var v in obj)
+            {
+                code <<= 8;
+                code |= v;
+            }
+
+            return code;
         }
     }
 }

@@ -23,7 +23,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Web;
 
-namespace AwsSyncer
+namespace AwsSyncer.AWS
 {
     public static class S3Util
     {

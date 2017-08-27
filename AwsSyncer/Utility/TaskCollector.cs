@@ -24,7 +24,7 @@ using System.Diagnostics;
 using System.Linq;
 using System.Threading.Tasks;
 
-namespace AwsSyncer
+namespace AwsSyncer.Utility
 {
     public class TaskCollector
     {

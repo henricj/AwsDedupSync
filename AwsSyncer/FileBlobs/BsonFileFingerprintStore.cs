@@ -25,11 +25,12 @@ using System.Diagnostics;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
+using AwsSyncer.Utility;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Bson;
 using SevenZip;
 
-namespace AwsSyncer
+namespace AwsSyncer.FileBlobs
 {
     public sealed class BsonFileFingerprintStore : IDisposable
     {

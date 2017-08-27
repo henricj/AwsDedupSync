@@ -24,8 +24,9 @@ using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Threading.Tasks.Dataflow;
+using AwsSyncer.Types;
 
-namespace AwsSyncer
+namespace AwsSyncer.FileBlobs
 {
     public sealed class BlobManager : IDisposable
     {

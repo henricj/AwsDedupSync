@@ -24,7 +24,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Text;
 
-namespace AwsSyncer
+namespace AwsSyncer.Utility
 {
     public static class PathUtil
     {

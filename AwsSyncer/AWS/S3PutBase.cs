@@ -26,7 +26,7 @@ using System.Threading.Tasks;
 using Amazon.S3;
 using Amazon.S3.Model;
 
-namespace AwsSyncer
+namespace AwsSyncer.AWS
 {
     public class S3PutBase
     {

@@ -1,4 +1,4 @@
-// Copyright (c) 2016 Henric Jungheim <software@henric.org>
+// Copyright (c) 2014-2017 Henric Jungheim <software@henric.org>
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a
 // copy of this software and associated documentation files (the "Software"),
@@ -18,31 +18,21 @@
 // FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
-using System;
-
-namespace AwsSyncer
+namespace AwsSyncer.Utility
 {
-    public interface IFileFingerprint
+    public static class SizeConversion
     {
-        string FullFilePath { get; }
-        DateTime LastModifiedUtc { get; }
-        BlobFingerprint Fingerprint { get; }
-        bool WasCached { get; }
-    }
+        const double ToGiB = 1.0 / (1024 * 1024 * 1024);
+        const double ToMiB = 1.0 / (1024 * 1024);
 
-    public class FileFingerprint : IFileFingerprint
-    {
-        public FileFingerprint(string fullFilePath, DateTime lastModifiedUtc, BlobFingerprint fingerprint, bool wasCached = false)
+        public static double BytesToGiB(this long value)
         {
-            Fingerprint = fingerprint;
-            WasCached = wasCached;
-            FullFilePath = fullFilePath;
-            LastModifiedUtc = lastModifiedUtc;
+            return value * ToGiB;
         }
 
-        public string FullFilePath { get; }
-        public DateTime LastModifiedUtc { get; }
-        public BlobFingerprint Fingerprint { get; }
-        public bool WasCached { get; }
+        public static double BytesToMiB(this long value)
+        {
+            return value * ToMiB;
+        }
     }
 }

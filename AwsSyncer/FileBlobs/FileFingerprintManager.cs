@@ -28,8 +28,10 @@ using System.Security.AccessControl;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Threading.Tasks.Dataflow;
+using AwsSyncer.Types;
+using AwsSyncer.Utility;
 
-namespace AwsSyncer
+namespace AwsSyncer.FileBlobs
 {
     public sealed class FileFingerprintManager : IDisposable
     {

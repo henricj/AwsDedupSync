@@ -18,19 +18,47 @@
 // FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
-using System.IO;
+using System;
+using Newtonsoft.Json;
 
-namespace AwsSyncer
+namespace AwsSyncer.Utility
 {
-    public class AnnotatedPath
+    public class MsTicksDateTimeJsonConverter : JsonConverter
     {
-        public FileInfo FileInfo { get; set; }
-        public string Collection { get; set; }
-        public string RelativePath { get; set; }
-
-        public override string ToString()
+        public override void WriteJson(JsonWriter writer, object value, JsonSerializer serializer)
         {
-            return '[' + Collection + ']' + RelativePath;
+            var dateTime = (DateTime)value;
+
+            var binary = dateTime.ToBinary();
+
+            var bytes = BitConverter.GetBytes(binary);
+
+            writer.WriteValue(bytes);
+        }
+
+        public override object ReadJson(JsonReader reader, Type objectType, object existingValue, JsonSerializer serializer)
+        {
+            if (null == reader.Value)
+                return null;
+
+            if (reader.TokenType != JsonToken.Bytes)
+            {
+                if (reader.TokenType == JsonToken.Date)
+                    return (DateTime)reader.Value;
+
+                return null;
+            }
+
+            var bytes = (byte[])reader.Value;
+
+            var binary = BitConverter.ToInt64(bytes, 0);
+
+            return DateTime.FromBinary(binary);
+        }
+
+        public override bool CanConvert(Type objectType)
+        {
+            return typeof(DateTime) == objectType;
         }
     }
 }

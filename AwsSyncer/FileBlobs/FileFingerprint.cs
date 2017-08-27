@@ -18,16 +18,31 @@
 // FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
-namespace AwsSyncer
-{
-    public class CollectionPath
-    {
-        public string Collection { get; set; }
-        public string Path { get; set; }
+using System;
 
-        public override string ToString()
+namespace AwsSyncer.FileBlobs
+{
+    public interface IFileFingerprint
+    {
+        string FullFilePath { get; }
+        DateTime LastModifiedUtc { get; }
+        BlobFingerprint Fingerprint { get; }
+        bool WasCached { get; }
+    }
+
+    public class FileFingerprint : IFileFingerprint
+    {
+        public FileFingerprint(string fullFilePath, DateTime lastModifiedUtc, BlobFingerprint fingerprint, bool wasCached = false)
         {
-            return '[' + Collection + ']' + Path;
+            Fingerprint = fingerprint;
+            WasCached = wasCached;
+            FullFilePath = fullFilePath;
+            LastModifiedUtc = lastModifiedUtc;
         }
+
+        public string FullFilePath { get; }
+        public DateTime LastModifiedUtc { get; }
+        public BlobFingerprint Fingerprint { get; }
+        public bool WasCached { get; }
     }
 }

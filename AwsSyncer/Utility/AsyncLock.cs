@@ -24,7 +24,7 @@ using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace AwsSyncer
+namespace AwsSyncer.Utility
 {
     public sealed class AsyncLock : IDisposable
     {

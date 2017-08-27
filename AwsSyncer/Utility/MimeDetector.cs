@@ -26,7 +26,7 @@ using System.Linq;
 using System.Web;
 using Microsoft.Win32;
 
-namespace AwsSyncer
+namespace AwsSyncer.Utility
 {
     // ReSharper disable once ClassNeverInstantiated.Global
     public class MimeDetector

@@ -21,7 +21,7 @@
 using System.Collections.Generic;
 using System.Diagnostics;
 
-namespace AwsSyncer
+namespace AwsSyncer.Utility
 {
     public static class QueueExtensions
     {

@@ -20,8 +20,9 @@
 
 using System;
 using System.Linq;
+using AwsSyncer.AWS;
 
-namespace AwsSyncer
+namespace AwsSyncer.FileBlobs
 {
     public class BlobFingerprint : IEquatable<BlobFingerprint>
     {

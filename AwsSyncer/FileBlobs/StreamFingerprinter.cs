@@ -25,7 +25,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using KeccakOpt;
 
-namespace AwsSyncer
+namespace AwsSyncer.FileBlobs
 {
     public class StreamFingerprinter
     {

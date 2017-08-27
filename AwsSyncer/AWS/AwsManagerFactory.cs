@@ -19,46 +19,21 @@
 // DEALINGS IN THE SOFTWARE.
 
 using System;
-using System.Collections.Generic;
-using System.Linq;
+using Amazon.S3;
 
-namespace AwsSyncer
+namespace AwsSyncer.AWS
 {
-    /// <inheritdoc />
-    /// <summary>
-    ///     Generate a quick hash code for byte arrays that are known
-    ///     to be uniformly random.
-    /// </summary>
-    public sealed class HashEqualityComparer : IEqualityComparer<byte[]>
+    public static class AwsManagerFactory
     {
-        public bool Equals(byte[] x, byte[] y)
+        public static IAwsManager Create(string bucket)
         {
-            if (ReferenceEquals(x, y))
-                return true;
+            var amazonS3 = new AmazonS3Client();
 
-            if (ReferenceEquals(x, null) || ReferenceEquals(null, y))
-                return false;
+            var s3Url = amazonS3.Config.DetermineServiceURL();
 
-            if (x.Length != y.Length)
-                return false;
+            var pathManager = new PathManager(new Uri(s3Url, UriKind.Absolute), bucket);
 
-            return x.SequenceEqual(y);
-        }
-
-        public int GetHashCode(byte[] obj)
-        {
-            if (obj.Length >= sizeof(int))
-                return BitConverter.ToInt32(obj, 0);
-
-            var code = 0;
-
-            foreach (var v in obj)
-            {
-                code <<= 8;
-                code |= v;
-            }
-
-            return code;
+            return new AwsManager(amazonS3, pathManager);
         }
     }
 }

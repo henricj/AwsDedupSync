@@ -23,7 +23,7 @@ using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace AwsSyncer
+namespace AwsSyncer.Utility
 {
     public class SequentialReadStream : Stream
     {

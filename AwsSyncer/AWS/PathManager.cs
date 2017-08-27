@@ -19,8 +19,10 @@
 // DEALINGS IN THE SOFTWARE.
 
 using System;
+using AwsSyncer.FileBlobs;
+using AwsSyncer.Utility;
 
-namespace AwsSyncer
+namespace AwsSyncer.AWS
 {
     public interface IPathManager
     {

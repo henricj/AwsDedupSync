@@ -25,8 +25,11 @@ using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 using Amazon.S3;
+using AwsSyncer.FileBlobs;
+using AwsSyncer.Types;
+using AwsSyncer.Utility;
 
-namespace AwsSyncer
+namespace AwsSyncer.AWS
 {
     public interface IAwsManager : IDisposable
     {

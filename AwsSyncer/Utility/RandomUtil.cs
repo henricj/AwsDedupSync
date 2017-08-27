@@ -23,7 +23,7 @@ using System.Collections.Generic;
 using System.Security.Cryptography;
 using System.Threading;
 
-namespace AwsSyncer
+namespace AwsSyncer.Utility
 {
     public static class RandomUtil
     {

@@ -26,8 +26,10 @@ using System.Threading;
 using System.Threading.Tasks;
 using Amazon.S3;
 using Amazon.S3.Model;
+using AwsSyncer.FileBlobs;
+using AwsSyncer.Utility;
 
-namespace AwsSyncer
+namespace AwsSyncer.AWS
 {
     public sealed class S3Links : S3PutBase
     {

@@ -24,6 +24,9 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using System.Threading.Tasks.Dataflow;
+using AwsSyncer.FileBlobs;
+using AwsSyncer.Types;
+using AwsSyncer.Utility;
 
 namespace AwsSyncer
 {

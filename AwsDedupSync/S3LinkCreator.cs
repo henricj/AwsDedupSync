@@ -24,6 +24,9 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Threading.Tasks.Dataflow;
 using AwsSyncer;
+using AwsSyncer.AWS;
+using AwsSyncer.FileBlobs;
+using AwsSyncer.Types;
 
 namespace AwsDedupSync
 {

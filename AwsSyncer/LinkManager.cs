@@ -24,6 +24,9 @@ using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Threading.Tasks.Dataflow;
+using AwsSyncer.AWS;
+using AwsSyncer.FileBlobs;
+using AwsSyncer.Types;
 
 namespace AwsSyncer
 {
@@ -74,7 +77,7 @@ namespace AwsSyncer
             Debug.WriteLine("S3LinkCreateor.CreateLinkAsync() all link blocks are done");
         }
 
-        async Task CreateLinksBlockAsync(IAwsManager awsManager,
+        static async Task CreateLinksBlockAsync(IAwsManager awsManager,
             string collection,
             ISourceBlock<Tuple<AnnotatedPath, IFileFingerprint>> collectionBlock,
             bool actuallyWrite,
@@ -126,7 +129,7 @@ namespace AwsSyncer
             Debug.WriteLine($"Link handler for {collection} is done");
         }
 
-        async Task CreateLinkAsync(IAwsManager awsManager, S3Links.ICreateLinkRequest createLinkRequest, bool actuallyWrite, CancellationToken cancellationToken)
+        static async Task CreateLinkAsync(IAwsManager awsManager, S3Links.ICreateLinkRequest createLinkRequest, bool actuallyWrite, CancellationToken cancellationToken)
         {
             if (cancellationToken.IsCancellationRequested)
                 return;
