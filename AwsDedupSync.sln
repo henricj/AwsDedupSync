@@ -5,9 +5,9 @@ VisualStudioVersion = 15.0.26730.10
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AwsDedupSync", "AwsDedupSync\AwsDedupSync.csproj", "{BF670389-A661-427A-ACA0-9B83E2C976E0}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AwsSyncer", "AwsSyncer\AwsSyncer.csproj", "{7A6F1FE7-3607-4D38-AF58-4D960F43760F}"
-EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "Keccak", "Keccak\Keccak.vcxproj", "{2DC0AD6E-CD87-4679-A1BE-F29FD931681B}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "AwsSyncer", "AwsSyncer\AwsSyncer.csproj", "{9FD4E0E5-884F-4326-8DD2-D8BCFEB392EA}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -25,14 +25,6 @@ Global
 		{BF670389-A661-427A-ACA0-9B83E2C976E0}.Release|Win32.Build.0 = Release|x86
 		{BF670389-A661-427A-ACA0-9B83E2C976E0}.Release|x64.ActiveCfg = Release|x64
 		{BF670389-A661-427A-ACA0-9B83E2C976E0}.Release|x64.Build.0 = Release|x64
-		{7A6F1FE7-3607-4D38-AF58-4D960F43760F}.Debug|Win32.ActiveCfg = Debug|x86
-		{7A6F1FE7-3607-4D38-AF58-4D960F43760F}.Debug|Win32.Build.0 = Debug|x86
-		{7A6F1FE7-3607-4D38-AF58-4D960F43760F}.Debug|x64.ActiveCfg = Debug|x64
-		{7A6F1FE7-3607-4D38-AF58-4D960F43760F}.Debug|x64.Build.0 = Debug|x64
-		{7A6F1FE7-3607-4D38-AF58-4D960F43760F}.Release|Win32.ActiveCfg = Release|x86
-		{7A6F1FE7-3607-4D38-AF58-4D960F43760F}.Release|Win32.Build.0 = Release|x86
-		{7A6F1FE7-3607-4D38-AF58-4D960F43760F}.Release|x64.ActiveCfg = Release|x64
-		{7A6F1FE7-3607-4D38-AF58-4D960F43760F}.Release|x64.Build.0 = Release|x64
 		{2DC0AD6E-CD87-4679-A1BE-F29FD931681B}.Debug|Win32.ActiveCfg = Debug|Win32
 		{2DC0AD6E-CD87-4679-A1BE-F29FD931681B}.Debug|Win32.Build.0 = Debug|Win32
 		{2DC0AD6E-CD87-4679-A1BE-F29FD931681B}.Debug|x64.ActiveCfg = Debug|x64
@@ -41,6 +33,14 @@ Global
 		{2DC0AD6E-CD87-4679-A1BE-F29FD931681B}.Release|Win32.Build.0 = Release|Win32
 		{2DC0AD6E-CD87-4679-A1BE-F29FD931681B}.Release|x64.ActiveCfg = Release|x64
 		{2DC0AD6E-CD87-4679-A1BE-F29FD931681B}.Release|x64.Build.0 = Release|x64
+		{9FD4E0E5-884F-4326-8DD2-D8BCFEB392EA}.Debug|Win32.ActiveCfg = Debug|x86
+		{9FD4E0E5-884F-4326-8DD2-D8BCFEB392EA}.Debug|Win32.Build.0 = Debug|x86
+		{9FD4E0E5-884F-4326-8DD2-D8BCFEB392EA}.Debug|x64.ActiveCfg = Debug|x64
+		{9FD4E0E5-884F-4326-8DD2-D8BCFEB392EA}.Debug|x64.Build.0 = Debug|x64
+		{9FD4E0E5-884F-4326-8DD2-D8BCFEB392EA}.Release|Win32.ActiveCfg = Release|x86
+		{9FD4E0E5-884F-4326-8DD2-D8BCFEB392EA}.Release|Win32.Build.0 = Release|x86
+		{9FD4E0E5-884F-4326-8DD2-D8BCFEB392EA}.Release|x64.ActiveCfg = Release|x64
+		{9FD4E0E5-884F-4326-8DD2-D8BCFEB392EA}.Release|x64.Build.0 = Release|x64
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
