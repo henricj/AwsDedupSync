@@ -25,7 +25,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Threading.Tasks.Dataflow;
 using AwsSyncer.AWS;
-using AwsSyncer.FileBlobs;
 using AwsSyncer.Types;
 
 namespace AwsSyncer
@@ -33,14 +32,14 @@ namespace AwsSyncer
     public class LinkManager
     {
         public async Task CreateLinksAsync(IAwsManager awsManager,
-            ISourceBlock<Tuple<AnnotatedPath, IFileFingerprint>> blobSourceBlock,
+            ISourceBlock<Tuple<AnnotatedPath, FileFingerprint>> blobSourceBlock,
             bool actuallyWrite,
             CancellationToken cancellationToken)
         {
-            var collectionBlocks = new Dictionary<string, ITargetBlock<Tuple<AnnotatedPath, IFileFingerprint>>>();
+            var collectionBlocks = new Dictionary<string, ITargetBlock<Tuple<AnnotatedPath, FileFingerprint>>>();
             var tasks = new List<Task>();
 
-            var routeBlock = new ActionBlock<Tuple<AnnotatedPath, IFileFingerprint>>(async blob =>
+            var routeBlock = new ActionBlock<Tuple<AnnotatedPath, FileFingerprint>>(async blob =>
             {
                 var collection = blob.Item1.Collection;
 
@@ -49,7 +48,7 @@ namespace AwsSyncer
 
                 if (!collectionBlocks.TryGetValue(collection, out var collectionBlock))
                 {
-                    var bufferBlock = new BufferBlock<Tuple<AnnotatedPath, IFileFingerprint>>();
+                    var bufferBlock = new BufferBlock<Tuple<AnnotatedPath, FileFingerprint>>();
 
                     collectionBlock = bufferBlock;
 
@@ -79,7 +78,7 @@ namespace AwsSyncer
 
         static async Task CreateLinksBlockAsync(IAwsManager awsManager,
             string collection,
-            ISourceBlock<Tuple<AnnotatedPath, IFileFingerprint>> collectionBlock,
+            ISourceBlock<Tuple<AnnotatedPath, FileFingerprint>> collectionBlock,
             bool actuallyWrite,
             CancellationToken cancellationToken)
         {
@@ -91,7 +90,7 @@ namespace AwsSyncer
                 link => CreateLinkAsync(awsManager, link, actuallyWrite, cancellationToken),
                 new ExecutionDataflowBlockOptions { MaxDegreeOfParallelism = 512, CancellationToken = cancellationToken });
 
-            var makeLinkBlock = new TransformBlock<Tuple<AnnotatedPath, IFileFingerprint>, S3Links.ICreateLinkRequest>(
+            var makeLinkBlock = new TransformBlock<Tuple<AnnotatedPath, FileFingerprint>, S3Links.ICreateLinkRequest>(
                 tuple =>
                 {
                     var path = tuple.Item1;

@@ -25,7 +25,7 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 
-namespace AwsSyncer.FileBlobs
+namespace AwsSyncer.FingerprintStore
 {
     public class FileSequence
     {

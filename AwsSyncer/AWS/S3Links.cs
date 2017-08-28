@@ -26,7 +26,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Amazon.S3;
 using Amazon.S3.Model;
-using AwsSyncer.FileBlobs;
+using AwsSyncer.Types;
 using AwsSyncer.Utility;
 
 namespace AwsSyncer.AWS
@@ -71,7 +71,7 @@ namespace AwsSyncer.AWS
             }
         }
 
-        public ICreateLinkRequest BuildCreateLinkRequest(string collection, string relativePath, IFileFingerprint fileFingerprint, string existingETag)
+        public ICreateLinkRequest BuildCreateLinkRequest(string collection, string relativePath, FileFingerprint fileFingerprint, string existingETag)
         {
             var link = '/' + _pathManager.GetBlobPath(fileFingerprint);
 
@@ -139,7 +139,7 @@ namespace AwsSyncer.AWS
             string RelativePath { get; }
             string BlobLink { get; }
             string ETag { get; }
-            IFileFingerprint FileFingerprint { get; }
+            FileFingerprint FileFingerprint { get; }
         }
 
         class CreateLinkRequest : S3PutRequest, ICreateLinkRequest
@@ -147,7 +147,7 @@ namespace AwsSyncer.AWS
             public string Collection { get; set; }
             public string RelativePath { get; set; }
             public string BlobLink { get; set; }
-            public IFileFingerprint FileFingerprint { get; set; }
+            public FileFingerprint FileFingerprint { get; set; }
         }
     }
 }

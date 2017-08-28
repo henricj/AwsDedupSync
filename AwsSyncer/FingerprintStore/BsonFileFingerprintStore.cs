@@ -26,22 +26,23 @@ using System.IO;
 using System.IO.Compression;
 using System.Threading;
 using System.Threading.Tasks;
+using AwsSyncer.Types;
 using AwsSyncer.Utility;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Bson;
 
-namespace AwsSyncer.FileBlobs
+namespace AwsSyncer.FingerprintStore
 {
-    public sealed class BsonFileFingerprintStore : IDisposable
+    public sealed class BsonFileFingerprintStore : IFileFingerprintStore
     {
         static readonly DirectoryInfo BsonDirectory = GetBsonDirectory();
-        static readonly Dictionary<string, IFileFingerprint> EmptyFileFingerprints = new Dictionary<string, IFileFingerprint>();
+        static readonly Dictionary<string, FileFingerprint> EmptyFileFingerprints = new Dictionary<string, FileFingerprint>();
         readonly FileSequence _fileSequence;
         readonly AsyncLock _lock = new AsyncLock();
         Stream _bsonFile;
         Stream _bufferStream;
-        BsonDataWriter _jsonWriter;
         DeflateStream _encodeStream;
+        BsonDataWriter _jsonWriter;
 
         public BsonFileFingerprintStore()
         {
@@ -63,6 +64,53 @@ namespace AwsSyncer.FileBlobs
             }
 
             _lock.Dispose();
+        }
+
+        public async Task<IReadOnlyDictionary<string, FileFingerprint>> LoadBlobsAsync(CancellationToken cancellationToken)
+        {
+            try
+            {
+                var ret = await LoadBlobCacheRetryAsync(cancellationToken).ConfigureAwait(false);
+
+                if (null != ret)
+                    return ret;
+            }
+            catch (JsonReaderException)
+            {
+                // The schema has changed?
+            }
+
+            cancellationToken.ThrowIfCancellationRequested();
+
+            try
+            {
+                await RebuildCacheAsync(EmptyFileFingerprints, cancellationToken).ConfigureAwait(false);
+            }
+            catch (IOException ex)
+            {
+                Console.WriteLine("LoadBlobsAsync() delete failed: " + ex.Message);
+            }
+
+            return EmptyFileFingerprints;
+        }
+
+        public async Task FlushAsync(CancellationToken cancellationToken)
+        {
+            using (await _lock.LockAsync(cancellationToken).ConfigureAwait(false))
+            {
+                if (null == _jsonWriter)
+                    return;
+
+                await _jsonWriter.FlushAsync(cancellationToken).ConfigureAwait(false);
+            }
+        }
+
+        public async Task StoreBlobsAsync(ICollection<FileFingerprint> fileFingerprints, CancellationToken cancellationToken)
+        {
+            using (await _lock.LockAsync(cancellationToken).ConfigureAwait(false))
+            {
+                await StoreBlobsImplAsync(fileFingerprints, cancellationToken).ConfigureAwait(false);
+            }
         }
 
         static Stream OpenBsonFileForRead(FileInfo fi)
@@ -97,35 +145,7 @@ namespace AwsSyncer.FileBlobs
             return new DirectoryInfo(path);
         }
 
-        public async Task<IReadOnlyDictionary<string, IFileFingerprint>> LoadBlobsAsync(CancellationToken cancellationToken)
-        {
-            try
-            {
-                var ret = await LoadBlobCacheRetryAsync(cancellationToken).ConfigureAwait(false);
-
-                if (null != ret)
-                    return ret;
-            }
-            catch (JsonReaderException)
-            {
-                // The schema has changed?
-            }
-
-            cancellationToken.ThrowIfCancellationRequested();
-
-            try
-            {
-                await RebuildCacheAsync(EmptyFileFingerprints, cancellationToken).ConfigureAwait(false);
-            }
-            catch (IOException ex)
-            {
-                Console.WriteLine("LoadBlobsAsync() delete failed: " + ex.Message);
-            }
-
-            return EmptyFileFingerprints;
-        }
-
-        async Task<IReadOnlyDictionary<string, IFileFingerprint>> LoadBlobCacheRetryAsync(CancellationToken cancellationToken)
+        async Task<IReadOnlyDictionary<string, FileFingerprint>> LoadBlobCacheRetryAsync(CancellationToken cancellationToken)
         {
             var delay = 3.0;
 
@@ -157,9 +177,9 @@ namespace AwsSyncer.FileBlobs
             return null;
         }
 
-        async Task<IReadOnlyDictionary<string, IFileFingerprint>> LoadBlobsImplAsync(CancellationToken cancellationToken)
+        async Task<IReadOnlyDictionary<string, FileFingerprint>> LoadBlobsImplAsync(CancellationToken cancellationToken)
         {
-            var blobs = new Dictionary<string, IFileFingerprint>();
+            var blobs = new Dictionary<string, FileFingerprint>();
 
             var needRebuild = false;
 
@@ -256,7 +276,7 @@ namespace AwsSyncer.FileBlobs
             return blobs;
         }
 
-        static async Task<IFileFingerprint> ReadFileFingerprintAsync(JsonReader reader, CancellationToken cancellationToken)
+        static async Task<FileFingerprint> ReadFileFingerprintAsync(JsonReader reader, CancellationToken cancellationToken)
         {
             if (JsonToken.StartObject != reader.TokenType)
                 throw new JsonReaderException("State not object");
@@ -318,7 +338,7 @@ namespace AwsSyncer.FileBlobs
             return null;
         }
 
-        static async Task WriteFileFingerprintAsync(JsonWriter writer, IFileFingerprint blob, CancellationToken cancellationToken)
+        static async Task WriteFileFingerprintAsync(JsonWriter writer, FileFingerprint blob, CancellationToken cancellationToken)
         {
             if (writer.WriteState != WriteState.Start)
                 throw new JsonWriterException("State not closed");
@@ -343,7 +363,7 @@ namespace AwsSyncer.FileBlobs
             await writer.WriteEndObjectAsync(cancellationToken);
         }
 
-        async Task RebuildCacheAsync(Dictionary<string, IFileFingerprint> blobs, CancellationToken cancellationToken)
+        async Task RebuildCacheAsync(Dictionary<string, FileFingerprint> blobs, CancellationToken cancellationToken)
         {
             FileInfo tempFileInfo = null;
             var allOk = false;
@@ -393,7 +413,7 @@ namespace AwsSyncer.FileBlobs
             }
         }
 
-        async Task StoreBlobsImplAsync(ICollection<IFileFingerprint> fileFingerprints, CancellationToken cancellationToken)
+        async Task StoreBlobsImplAsync(ICollection<FileFingerprint> fileFingerprints, CancellationToken cancellationToken)
         {
             OpenWriter();
 
@@ -459,25 +479,6 @@ namespace AwsSyncer.FileBlobs
             encodeStream?.Close();
 
             bsonFile?.Close();
-        }
-
-        public async Task FlushAsync(CancellationToken cancellationToken)
-        {
-            using (await _lock.LockAsync(cancellationToken).ConfigureAwait(false))
-            {
-                if (null == _jsonWriter)
-                    return;
-
-                await _jsonWriter.FlushAsync(cancellationToken).ConfigureAwait(false);
-            }
-        }
-
-        public async Task StoreBlobsAsync(ICollection<IFileFingerprint> fileFingerprints, CancellationToken cancellationToken)
-        {
-            using (await _lock.LockAsync(cancellationToken).ConfigureAwait(false))
-            {
-                await StoreBlobsImplAsync(fileFingerprints, cancellationToken).ConfigureAwait(false);
-            }
         }
     }
 }

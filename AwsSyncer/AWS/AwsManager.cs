@@ -25,7 +25,6 @@ using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 using Amazon.S3;
-using AwsSyncer.FileBlobs;
 using AwsSyncer.Types;
 using AwsSyncer.Utility;
 
@@ -34,10 +33,10 @@ namespace AwsSyncer.AWS
     public interface IAwsManager : IDisposable
     {
         Task<IReadOnlyDictionary<string, string>> ScanAsync(CancellationToken cancellationToken);
-        S3Blobs.IUploadBlobRequest BuildUploadBlobRequest(Tuple<IFileFingerprint, AnnotatedPath> tuple);
+        S3Blobs.IUploadBlobRequest BuildUploadBlobRequest(Tuple<FileFingerprint, AnnotatedPath> tuple);
         Task UploadBlobAsync(S3Blobs.IUploadBlobRequest uploadBlobRequest, CancellationToken cancellationToken);
         Task<IReadOnlyDictionary<string, string>> GetLinksAsync(string name, CancellationToken cancellationToken);
-        S3Links.ICreateLinkRequest BuildLinkRequest(string collection, string relativePath, IFileFingerprint fileFingerprint, string existingETag = null);
+        S3Links.ICreateLinkRequest BuildLinkRequest(string collection, string relativePath, FileFingerprint fileFingerprint, string existingETag = null);
         Task CreateLinkAsync(S3Links.ICreateLinkRequest createLinkRequest, CancellationToken cancellationToken);
     }
 
@@ -99,7 +98,7 @@ namespace AwsSyncer.AWS
             return s3Blobs;
         }
 
-        public S3Blobs.IUploadBlobRequest BuildUploadBlobRequest(Tuple<IFileFingerprint, AnnotatedPath> tuple)
+        public S3Blobs.IUploadBlobRequest BuildUploadBlobRequest(Tuple<FileFingerprint, AnnotatedPath> tuple)
         {
             return _s3Blobs.BuildUploadBlobRequest(tuple);
         }
@@ -114,7 +113,7 @@ namespace AwsSyncer.AWS
             return _s3Links.ListAsync(name, cancellationToken);
         }
 
-        public S3Links.ICreateLinkRequest BuildLinkRequest(string collection, string relativePath, IFileFingerprint fileFingerprint, string existingETag = null)
+        public S3Links.ICreateLinkRequest BuildLinkRequest(string collection, string relativePath, FileFingerprint fileFingerprint, string existingETag = null)
         {
             return _s3Links.BuildCreateLinkRequest(collection, relativePath, fileFingerprint, existingETag);
         }

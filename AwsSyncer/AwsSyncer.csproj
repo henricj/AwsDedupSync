@@ -57,16 +57,17 @@
     <Reference Include="Microsoft.CSharp" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="FingerprintStore\IFileFingerprintStore.cs" />
     <Compile Include="Types\AnnotatedPath.cs" />
     <Compile Include="Utility\AsyncLock.cs" />
-    <Compile Include="FileBlobs\BlobFingerprint.cs" />
+    <Compile Include="Types\BlobFingerprint.cs" />
     <Compile Include="FileBlobs\BlobManager.cs" />
     <Compile Include="Types\CollectionPath.cs" />
-    <Compile Include="FileBlobs\BsonFileFingerprintStore.cs" />
+    <Compile Include="FingerprintStore\BsonFileFingerprintStore.cs" />
     <Compile Include="FileBlobs\DirectoryScanner.cs" />
-    <Compile Include="FileBlobs\FileFingerprint.cs" />
+    <Compile Include="Types\FileFingerprint.cs" />
     <Compile Include="FileBlobs\FileFingerprintManager.cs" />
-    <Compile Include="FileBlobs\FileSequence.cs" />
+    <Compile Include="FingerprintStore\FileSequence.cs" />
     <Compile Include="Utility\HashEqualityComparer.cs" />
     <Compile Include="LinkFingerprintJoiner.cs" />
     <Compile Include="LinkManager.cs" />

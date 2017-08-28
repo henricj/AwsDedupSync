@@ -1,4 +1,4 @@
-// Copyright (c) 2016 Henric Jungheim <software@henric.org>
+// Copyright (c) 2016-2017 Henric Jungheim <software@henric.org>
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a
 // copy of this software and associated documentation files (the "Software"),
@@ -18,19 +18,67 @@
 // FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
+using System;
 using System.IO;
 
 namespace AwsSyncer.Types
 {
-    public class AnnotatedPath
+    public sealed class AnnotatedPath : IEquatable<AnnotatedPath>
     {
-        public FileInfo FileInfo { get; set; }
-        public string Collection { get; set; }
-        public string RelativePath { get; set; }
+        public AnnotatedPath(FileInfo fileInfo, string collection, string relativePath)
+        {
+            FileInfo = fileInfo ?? throw new ArgumentNullException(nameof(fileInfo));
+            Collection = collection ?? throw new ArgumentNullException(nameof(collection));
+            RelativePath = relativePath ?? throw new ArgumentNullException(nameof(relativePath));
+        }
+
+        public FileInfo FileInfo { get; }
+        public string Collection { get; }
+        public string RelativePath { get; }
+
+        public bool Equals(AnnotatedPath other)
+        {
+            if (ReferenceEquals(null, other)) return false;
+            if (ReferenceEquals(this, other)) return true;
+
+            return FileInfo.Equals(other.FileInfo)
+                   && string.Equals(Collection, other.Collection, StringComparison.OrdinalIgnoreCase)
+                   && string.Equals(RelativePath, other.RelativePath, StringComparison.OrdinalIgnoreCase);
+        }
 
         public override string ToString()
         {
             return '[' + Collection + ']' + RelativePath;
+        }
+
+        public override bool Equals(object obj)
+        {
+            if (ReferenceEquals(null, obj)) return false;
+            if (ReferenceEquals(this, obj)) return true;
+
+            return obj is AnnotatedPath path && Equals(path);
+        }
+
+        public override int GetHashCode()
+        {
+            unchecked
+            {
+                var hashCode = FileInfo.GetHashCode();
+                hashCode = (hashCode * 397) ^ StringComparer.OrdinalIgnoreCase.GetHashCode(Collection);
+                hashCode = (hashCode * 397) ^ StringComparer.OrdinalIgnoreCase.GetHashCode(RelativePath);
+
+                return hashCode;
+            }
+        }
+
+        public static bool operator ==(AnnotatedPath left, AnnotatedPath right)
+        {
+            return Equals(left, right);
+        }
+
+        public static bool operator !=(AnnotatedPath left, AnnotatedPath right)
+        {
+            return !Equals(left, right);
         }
     }
 }

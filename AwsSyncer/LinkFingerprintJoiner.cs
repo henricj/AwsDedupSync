@@ -24,7 +24,6 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using System.Threading.Tasks.Dataflow;
-using AwsSyncer.FileBlobs;
 using AwsSyncer.Types;
 using AwsSyncer.Utility;
 
@@ -35,9 +34,9 @@ namespace AwsSyncer
         readonly ConcurrentDictionary<string, PathFingerprint> _join
             = new ConcurrentDictionary<string, PathFingerprint>(StringComparer.CurrentCultureIgnoreCase);
 
-        readonly ITargetBlock<Tuple<AnnotatedPath, IFileFingerprint>> _targetBlock;
+        readonly ITargetBlock<Tuple<AnnotatedPath, FileFingerprint>> _targetBlock;
 
-        public LinkFingerprintJoiner(ITargetBlock<Tuple<AnnotatedPath, IFileFingerprint>> targetBlock)
+        public LinkFingerprintJoiner(ITargetBlock<Tuple<AnnotatedPath, FileFingerprint>> targetBlock)
         {
             _targetBlock = targetBlock ?? throw new ArgumentNullException(nameof(targetBlock));
 
@@ -45,7 +44,7 @@ namespace AwsSyncer
                 aps => Task.WhenAll(aps.Select(SetAnnotatedPathAsync)),
                 new ExecutionDataflowBlockOptions { MaxDegreeOfParallelism = DataflowBlockOptions.Unbounded });
 
-            FileFingerprintBlock = new ActionBlock<IFileFingerprint>(SetFileFingerprintAsync,
+            FileFingerprintBlock = new ActionBlock<FileFingerprint>(SetFileFingerprintAsync,
                 new ExecutionDataflowBlockOptions { MaxDegreeOfParallelism = DataflowBlockOptions.Unbounded });
 
             var task = Task.WhenAll(AnnotatedPathsBlock.Completion, FileFingerprintBlock.Completion)
@@ -55,7 +54,7 @@ namespace AwsSyncer
         }
 
         public ITargetBlock<AnnotatedPath[]> AnnotatedPathsBlock { get; }
-        public ITargetBlock<IFileFingerprint> FileFingerprintBlock { get; }
+        public ITargetBlock<FileFingerprint> FileFingerprintBlock { get; }
 
         PathFingerprint GetPathFingerprint(string fullFilePath)
         {
@@ -71,7 +70,7 @@ namespace AwsSyncer
             return pathFingerprint;
         }
 
-        Task SetFileFingerprintAsync(IFileFingerprint fileFingerprint)
+        Task SetFileFingerprintAsync(FileFingerprint fileFingerprint)
         {
             var pathFingerprint = GetPathFingerprint(fileFingerprint.FullFilePath);
 
@@ -101,7 +100,7 @@ namespace AwsSyncer
 
             var key = Tuple.Create(annotatedPath.Collection, annotatedPath.RelativePath);
 
-            IFileFingerprint fileFingerprint;
+            FileFingerprint fileFingerprint;
 
             lock (pathFingerprint)
             {
@@ -124,7 +123,7 @@ namespace AwsSyncer
             public readonly Dictionary<Tuple<string, string>, AnnotatedPath> AnnotatedPaths
                 = new Dictionary<Tuple<string, string>, AnnotatedPath>();
 
-            public IFileFingerprint FileFingerprint;
+            public FileFingerprint FileFingerprint;
         }
     }
 }

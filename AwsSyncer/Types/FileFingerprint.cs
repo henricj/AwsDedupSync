@@ -22,28 +22,29 @@ using System;
 
 namespace AwsSyncer.Types
 {
-    public sealed class CollectionPath : IEquatable<CollectionPath>
+    public sealed class FileFingerprint : IEquatable<FileFingerprint>
     {
-        public CollectionPath(string collection, string path)
+        public FileFingerprint(string fullFilePath, DateTime lastModifiedUtc, BlobFingerprint fingerprint, bool wasCached = false)
         {
-            Collection = collection ?? throw new ArgumentNullException(nameof(collection));
-            Path = path ?? throw new ArgumentNullException(nameof(path));
+            Fingerprint = fingerprint ?? throw new ArgumentNullException(nameof(fingerprint));
+            WasCached = wasCached;
+            FullFilePath = fullFilePath ?? throw new ArgumentNullException(nameof(fullFilePath));
+            LastModifiedUtc = lastModifiedUtc;
         }
 
-        public string Collection { get; }
-        public string Path { get; }
+        public string FullFilePath { get; }
+        public DateTime LastModifiedUtc { get; }
+        public BlobFingerprint Fingerprint { get; }
+        public bool WasCached { get; }
 
-        public bool Equals(CollectionPath other)
+        public bool Equals(FileFingerprint other)
         {
             if (ReferenceEquals(null, other)) return false;
             if (ReferenceEquals(this, other)) return true;
 
-            return string.Equals(Collection, other.Collection, StringComparison.OrdinalIgnoreCase) && string.Equals(Path, other.Path, StringComparison.OrdinalIgnoreCase);
-        }
-
-        public override string ToString()
-        {
-            return '[' + Collection + ']' + Path;
+            return string.Equals(FullFilePath, other.FullFilePath, StringComparison.OrdinalIgnoreCase)
+                   && LastModifiedUtc.Equals(other.LastModifiedUtc)
+                   && Fingerprint.Equals(other.Fingerprint);
         }
 
         public override bool Equals(object obj)
@@ -51,23 +52,27 @@ namespace AwsSyncer.Types
             if (ReferenceEquals(null, obj)) return false;
             if (ReferenceEquals(this, obj)) return true;
 
-            return obj is CollectionPath path && Equals(path);
+            return obj is FileFingerprint ff && Equals(ff);
         }
 
         public override int GetHashCode()
         {
             unchecked
             {
-                return (StringComparer.OrdinalIgnoreCase.GetHashCode(Collection) * 397) ^ StringComparer.OrdinalIgnoreCase.GetHashCode(Path);
+                var hashCode = StringComparer.OrdinalIgnoreCase.GetHashCode(FullFilePath);
+                hashCode = (hashCode * 397) ^ LastModifiedUtc.GetHashCode();
+                hashCode = (hashCode * 397) ^ Fingerprint.GetHashCode();
+                hashCode = (hashCode * 397) ^ WasCached.GetHashCode();
+                return hashCode;
             }
         }
 
-        public static bool operator ==(CollectionPath left, CollectionPath right)
+        public static bool operator ==(FileFingerprint left, FileFingerprint right)
         {
             return Equals(left, right);
         }
 
-        public static bool operator !=(CollectionPath left, CollectionPath right)
+        public static bool operator !=(FileFingerprint left, FileFingerprint right)
         {
             return !Equals(left, right);
         }

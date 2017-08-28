@@ -28,7 +28,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using Amazon.S3;
 using Amazon.S3.Model;
-using AwsSyncer.FileBlobs;
 using AwsSyncer.Types;
 using AwsSyncer.Utility;
 
@@ -120,7 +119,7 @@ namespace AwsSyncer.AWS
             }
         }
 
-        public IUploadBlobRequest BuildUploadBlobRequest(Tuple<IFileFingerprint, AnnotatedPath> tuple)
+        public IUploadBlobRequest BuildUploadBlobRequest(Tuple<FileFingerprint, AnnotatedPath> tuple)
         {
             Debug.WriteLine($"S3Blobs.BuildUploadRequest() {tuple.Item1.FullFilePath} ({tuple.Item1.Fingerprint.Key().Substring(0, 12)})");
 
@@ -200,13 +199,13 @@ namespace AwsSyncer.AWS
         public interface IUploadBlobRequest
         {
             string Key { get; }
-            IFileFingerprint FileFingerprint { get; }
+            FileFingerprint FileFingerprint { get; }
         }
 
         class UploadBlobRequest : S3PutRequest, IUploadBlobRequest
         {
             public string Key { get; set; }
-            public IFileFingerprint FileFingerprint { get; set; }
+            public FileFingerprint FileFingerprint { get; set; }
         }
     }
 }

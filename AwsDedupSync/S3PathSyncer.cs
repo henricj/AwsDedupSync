@@ -27,6 +27,7 @@ using System.Threading.Tasks;
 using System.Threading.Tasks.Dataflow;
 using AwsSyncer.AWS;
 using AwsSyncer.FileBlobs;
+using AwsSyncer.FingerprintStore;
 using AwsSyncer.Types;
 using AwsSyncer.Utility;
 
@@ -49,7 +50,7 @@ namespace AwsDedupSync
             _s3LinkCreator = new S3LinkCreator(S3Settings);
         }
 
-        public S3Settings S3Settings { get; } = new S3Settings();
+        public S3Settings S3Settings { get; } = new S3Settings { ActuallyWrite = false, UpdateLinks = false, UploadBlobs = false };
 
         public async Task SyncPathsAsync(string bucket, IEnumerable<string> paths, Func<FileInfo, bool> filePredicate, CancellationToken cancellationToken)
         {
@@ -58,26 +59,23 @@ namespace AwsDedupSync
             var namedPaths = (from arg in paths
                               let split = arg.IndexOf('=')
                               let validSplit = split > 0 && split < arg.Length - 1
-                              select new CollectionPath
-                              {
-                                  Collection = validSplit ? arg.Substring(0, split) : null,
-                                  Path = PathUtil.ForceTrailingSlash(Path.GetFullPath(validSplit ? arg.Substring(split + 1) : arg))
-                              })
+                              select new CollectionPath(validSplit ? arg.Substring(0, split) : null,
+                                  PathUtil.ForceTrailingSlash(Path.GetFullPath(validSplit ? arg.Substring(split + 1) : arg))))
                 .Distinct()
                 .ToArray();
 
-            using (var blobManager = new BlobManager(new FileFingerprintManager(new StreamFingerprinter())))
+            using (var blobManager = new BlobManager(new FileFingerprintManager(new BsonFileFingerprintStore(), new StreamFingerprinter())) as IBlobManager)
             {
                 try
                 {
                     using (var awsManager = AwsManagerFactory.Create(bucket))
                     {
-                        var uniqueFingerprintBlock = new BufferBlock<Tuple<IFileFingerprint, AnnotatedPath>>();
-                        var linkBlock = new BufferBlock<Tuple<AnnotatedPath, IFileFingerprint>>();
+                        var uniqueFingerprintBlock = new BufferBlock<Tuple<FileFingerprint, AnnotatedPath>>();
+                        var linkBlock = new BufferBlock<Tuple<AnnotatedPath, FileFingerprint>>();
 
                         var uniqueFingerprints = new HashSet<BlobFingerprint>();
 
-                        var uniqueFingerprintFilterBlock = new ActionBlock<Tuple<AnnotatedPath, IFileFingerprint>>(
+                        var uniqueFingerprintFilterBlock = new ActionBlock<Tuple<AnnotatedPath, FileFingerprint>>(
                             t =>
                             {
                                 if (!uniqueFingerprints.Add(t.Item2.Fingerprint))
@@ -91,7 +89,7 @@ namespace AwsDedupSync
 
                         TaskCollector.Default.Add(uniqueCompletionTask, "Unique filter completion");
 
-                        var joinedBroadcastBlock = new BroadcastBlock<Tuple<AnnotatedPath, IFileFingerprint>>(t => t,
+                        var joinedBroadcastBlock = new BroadcastBlock<Tuple<AnnotatedPath, FileFingerprint>>(t => t,
                             new DataflowBlockOptions { CancellationToken = cancellationToken });
 
                         joinedBroadcastBlock.LinkTo(linkBlock, DataflowLinkOptionsPropagateEnabled);

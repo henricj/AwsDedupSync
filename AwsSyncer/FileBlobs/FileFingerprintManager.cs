@@ -28,22 +28,36 @@ using System.Security.AccessControl;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Threading.Tasks.Dataflow;
+using AwsSyncer.FingerprintStore;
 using AwsSyncer.Types;
 using AwsSyncer.Utility;
 
 namespace AwsSyncer.FileBlobs
 {
-    public sealed class FileFingerprintManager : IDisposable
+    public interface IFileFingerprintManager : IDisposable
+    {
+        Task ShutdownAsync(CancellationToken cancellationToken);
+        Task LoadAsync(CancellationToken cancellationToken);
+
+        Task GenerateFileFingerprintsAsync(ISourceBlock<AnnotatedPath[]> annotatedPathSourceBlock,
+            ITargetBlock<FileFingerprint> fileFingerprintTargetBlock,
+            CancellationToken cancellationToken);
+    }
+
+    public sealed class FileFingerprintManager : IFileFingerprintManager
     {
         const int FlushCount = 1024;
-        static readonly TimeSpan FlushInterval = TimeSpan.FromMinutes(10);
-        readonly BsonFileFingerprintStore _blobPathStore = new BsonFileFingerprintStore();
-        readonly StreamFingerprinter _fingerprinter;
-        IReadOnlyDictionary<string, IFileFingerprint> _previouslyCachedFileFingerprints;
 
-        public FileFingerprintManager(StreamFingerprinter fingerprinter)
+        //static readonly TimeSpan FlushInterval = TimeSpan.FromMinutes(10);
+        readonly IFileFingerprintStore _blobPathStore;
+
+        readonly IStreamFingerprinter _fingerprinter;
+        IReadOnlyDictionary<string, FileFingerprint> _previouslyCachedFileFingerprints;
+
+        public FileFingerprintManager(IFileFingerprintStore fileFingerprintStore, IStreamFingerprinter fingerprinter)
         {
-            _fingerprinter = fingerprinter;
+            _blobPathStore = fileFingerprintStore ?? throw new ArgumentNullException(nameof(fileFingerprintStore));
+            _fingerprinter = fingerprinter ?? throw new ArgumentNullException(nameof(fingerprinter));
         }
 
         public void Dispose()
@@ -67,7 +81,52 @@ namespace AwsSyncer.FileBlobs
             await _blobPathStore.FlushAsync(cancellationToken).ConfigureAwait(false);
         }
 
-        IFileFingerprint GetCachedFileFingerprint(FileInfo fileInfo)
+        public async Task LoadAsync(CancellationToken cancellationToken)
+        {
+            // Most of the time, the load will happen synchronously.  We do async over sync here so our
+            // caller will not block for too long.  We do need to make sure that the annotatedPathSourceBlock
+            // has been linked to something before we await (GenerateFileFingerprintsAsync() takes care
+            // of this before its first await).
+            _previouslyCachedFileFingerprints = await Task.Run(() => _blobPathStore.LoadBlobsAsync(cancellationToken), cancellationToken).ConfigureAwait(false);
+
+            Debug.WriteLine($"Loaded {_previouslyCachedFileFingerprints.Count} known files");
+        }
+
+        public Task GenerateFileFingerprintsAsync(ISourceBlock<AnnotatedPath[]> annotatedPathSourceBlock,
+            ITargetBlock<FileFingerprint> fileFingerprintTargetBlock,
+            CancellationToken cancellationToken)
+        {
+            var bufferBlock = new BufferBlock<FileFingerprint>(new DataflowBlockOptions { CancellationToken = cancellationToken });
+
+            bufferBlock.LinkTo(fileFingerprintTargetBlock, new DataflowLinkOptions { PropagateCompletion = true });
+
+            var storeBatchBlock = new BatchBlock<FileFingerprint>(FlushCount, new GroupingDataflowBlockOptions { CancellationToken = cancellationToken });
+
+            var broadcastBlock = new BroadcastBlock<FileFingerprint>(ff => ff, new ExecutionDataflowBlockOptions { CancellationToken = cancellationToken });
+
+            broadcastBlock.LinkTo(storeBatchBlock, new DataflowLinkOptions { PropagateCompletion = true }, ff => !ff.WasCached);
+            broadcastBlock.LinkTo(bufferBlock, new DataflowLinkOptions { PropagateCompletion = true });
+
+#if DEBUG
+            var task = storeBatchBlock.Completion
+                .ContinueWith(_ => Debug.WriteLine("FileFingerprintManager.GenerateFileFingerprintsAsync() storeBatchBlock completed"), CancellationToken.None);
+
+            TaskCollector.Default.Add(task, "FileFingerprintManager.GenerateFileFingerprintsAsync storeBatchBlock");
+
+            task = bufferBlock.Completion
+                .ContinueWith(_ => Debug.WriteLine("FileFingerprintManager.GenerateFileFingerprintsAsync() bufferBlock completed"), CancellationToken.None);
+
+            TaskCollector.Default.Add(task, "FileFingerprintManager.GenerateFileFingerprintsAsync bufferBlock");
+#endif // DEBUG
+
+            var storeTask = StoreFileFingerprintsAsync(storeBatchBlock, cancellationToken);
+
+            var transformTask = TransformAnnotatedPathsToFileFingerprint(annotatedPathSourceBlock, broadcastBlock, cancellationToken);
+
+            return Task.WhenAll(storeTask, transformTask);
+        }
+
+        FileFingerprint GetCachedFileFingerprint(FileInfo fileInfo)
         {
             if (!_previouslyCachedFileFingerprints.TryGetValue(fileInfo.FullName, out var fileFingerprint))
                 return null;
@@ -82,18 +141,7 @@ namespace AwsSyncer.FileBlobs
             return fileFingerprint;
         }
 
-        public async Task LoadAsync(CancellationToken cancellationToken)
-        {
-            // Most of the time, the load will happen synchronously.  We do async over sync here so our
-            // caller will not block for too long.  We do need to make sure that the annotatedPathSourceBlock
-            // has been linked to something before we await (GenerateFileFingerprintsAsync() takes care
-            // of this before its first await).
-            _previouslyCachedFileFingerprints = await Task.Run(() => _blobPathStore.LoadBlobsAsync(cancellationToken), cancellationToken).ConfigureAwait(false);
-
-            Debug.WriteLine($"Loaded {_previouslyCachedFileFingerprints.Count} known files");
-        }
-
-        async Task<IFileFingerprint> ProcessFileAsync(FileInfo fileInfo, CancellationToken cancellationToken)
+        async Task<FileFingerprint> ProcessFileAsync(FileInfo fileInfo, CancellationToken cancellationToken)
         {
             //Debug.WriteLine($"FileFingerprintManager.ProcessFileAsync({annotatedPath})");
 
@@ -146,43 +194,9 @@ namespace AwsSyncer.FileBlobs
             }
         }
 
-        public Task GenerateFileFingerprintsAsync(ISourceBlock<AnnotatedPath[]> annotatedPathSourceBlock,
-            ITargetBlock<IFileFingerprint> fileFingerprintTargetBlock,
-            CancellationToken cancellationToken)
+        Task StoreFileFingerprintsAsync(ISourceBlock<FileFingerprint[]> storeBatchBlock, CancellationToken cancellationToken)
         {
-            var bufferBlock = new BufferBlock<IFileFingerprint>(new DataflowBlockOptions { CancellationToken = cancellationToken });
-
-            bufferBlock.LinkTo(fileFingerprintTargetBlock, new DataflowLinkOptions { PropagateCompletion = true });
-
-            var storeBatchBlock = new BatchBlock<IFileFingerprint>(FlushCount, new GroupingDataflowBlockOptions { CancellationToken = cancellationToken });
-
-            var broadcastBlock = new BroadcastBlock<IFileFingerprint>(ff => ff, new ExecutionDataflowBlockOptions { CancellationToken = cancellationToken });
-
-            broadcastBlock.LinkTo(storeBatchBlock, new DataflowLinkOptions { PropagateCompletion = true }, ff => !ff.WasCached);
-            broadcastBlock.LinkTo(bufferBlock, new DataflowLinkOptions { PropagateCompletion = true });
-
-#if DEBUG
-            var task = storeBatchBlock.Completion
-                .ContinueWith(_ => Debug.WriteLine("FileFingerprintManager.GenerateFileFingerprintsAsync() storeBatchBlock completed"), CancellationToken.None);
-
-            TaskCollector.Default.Add(task, "FileFingerprintManager.GenerateFileFingerprintsAsync storeBatchBlock");
-
-            task = bufferBlock.Completion
-                .ContinueWith(_ => Debug.WriteLine("FileFingerprintManager.GenerateFileFingerprintsAsync() bufferBlock completed"), CancellationToken.None);
-
-            TaskCollector.Default.Add(task, "FileFingerprintManager.GenerateFileFingerprintsAsync bufferBlock");
-#endif // DEBUG
-
-            var storeTask = StoreFileFingerprintsAsync(storeBatchBlock, cancellationToken);
-
-            var transformTask = TransformAnnotatedPathsToFileFingerprint(annotatedPathSourceBlock, broadcastBlock, cancellationToken);
-
-            return Task.WhenAll(storeTask, transformTask);
-        }
-
-        Task StoreFileFingerprintsAsync(ISourceBlock<IFileFingerprint[]> storeBatchBlock, CancellationToken cancellationToken)
-        {
-            var block = new ActionBlock<IFileFingerprint[]>(
+            var block = new ActionBlock<FileFingerprint[]>(
                 fileFingerprints => WriteBlobsAsync(fileFingerprints, cancellationToken),
                 new ExecutionDataflowBlockOptions { CancellationToken = cancellationToken });
 
@@ -191,7 +205,7 @@ namespace AwsSyncer.FileBlobs
             return block.Completion;
         }
 
-        async Task WriteBlobsAsync(ICollection<IFileFingerprint> fileFingerprints, CancellationToken cancellationToken)
+        async Task WriteBlobsAsync(ICollection<FileFingerprint> fileFingerprints, CancellationToken cancellationToken)
         {
             Debug.WriteLine($"FileFingerprintManager writing {fileFingerprints.Count} items to db");
 
@@ -206,12 +220,12 @@ namespace AwsSyncer.FileBlobs
         }
 
         async Task TransformAnnotatedPathsToFileFingerprint(ISourceBlock<AnnotatedPath[]> annotatedPathSourceBlock,
-            ITargetBlock<IFileFingerprint> fileFingerprintTargetBlock,
+            ITargetBlock<FileFingerprint> fileFingerprintTargetBlock,
             CancellationToken cancellationToken)
         {
             try
             {
-                var targets = new ConcurrentDictionary<string, TransformBlock<AnnotatedPath, IFileFingerprint>>(StringComparer.InvariantCultureIgnoreCase);
+                var targets = new ConcurrentDictionary<string, TransformBlock<AnnotatedPath, FileFingerprint>>(StringComparer.InvariantCultureIgnoreCase);
 
                 var routeBlock = new ActionBlock<AnnotatedPath[]>(
                     async filenames =>
@@ -232,10 +246,10 @@ namespace AwsSyncer.FileBlobs
 
                             var host = PathUtil.GetHost(filename.FileInfo.FullName);
 
-                            TransformBlock<AnnotatedPath, IFileFingerprint> target;
+                            TransformBlock<AnnotatedPath, FileFingerprint> target;
                             while (!targets.TryGetValue(host, out target))
                             {
-                                target = new TransformBlock<AnnotatedPath, IFileFingerprint>(annotatedPath => ProcessFileAsync(annotatedPath.FileInfo, cancellationToken),
+                                target = new TransformBlock<AnnotatedPath, FileFingerprint>(annotatedPath => ProcessFileAsync(annotatedPath.FileInfo, cancellationToken),
                                     new ExecutionDataflowBlockOptions
                                     {
                                         MaxDegreeOfParallelism = 5,
@@ -248,7 +262,7 @@ namespace AwsSyncer.FileBlobs
                                 Debug.WriteLine($"FileFingerprintManager.GenerateBlobsAsync() starting reader for host: '{host}'");
 
                                 target.LinkTo(fileFingerprintTargetBlock, blob => null != blob);
-                                target.LinkTo(DataflowBlock.NullTarget<IFileFingerprint>());
+                                target.LinkTo(DataflowBlock.NullTarget<FileFingerprint>());
 
                                 break;
                             }

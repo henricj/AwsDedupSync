@@ -25,7 +25,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Threading.Tasks.Dataflow;
 using AwsSyncer.AWS;
-using AwsSyncer.FileBlobs;
 using AwsSyncer.Types;
 using AwsSyncer.Utility;
 
@@ -41,14 +40,14 @@ namespace AwsDedupSync
         }
 
         public Task UploadBlobsAsync(IAwsManager awsManager,
-            ISourceBlock<Tuple<IFileFingerprint, AnnotatedPath>> uniqueBlobBlock,
+            ISourceBlock<Tuple<FileFingerprint, AnnotatedPath>> uniqueBlobBlock,
             IReadOnlyDictionary<string, string> knowObjects,
             CancellationToken cancellationToken)
         {
             var blobCount = 0;
             var blobTotalSize = 0L;
 
-            var builderBlock = new TransformBlock<Tuple<IFileFingerprint, AnnotatedPath>, S3Blobs.IUploadBlobRequest>(
+            var builderBlock = new TransformBlock<Tuple<FileFingerprint, AnnotatedPath>, S3Blobs.IUploadBlobRequest>(
                 tuple =>
                 {
                     var exists = knowObjects.TryGetValue(tuple.Item1.Fingerprint.Key(), out var etag);

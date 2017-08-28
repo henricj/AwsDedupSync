@@ -25,7 +25,6 @@ using System.Threading.Tasks;
 using System.Threading.Tasks.Dataflow;
 using AwsSyncer;
 using AwsSyncer.AWS;
-using AwsSyncer.FileBlobs;
 using AwsSyncer.Types;
 
 namespace AwsDedupSync
@@ -42,7 +41,7 @@ namespace AwsDedupSync
         }
 
         public async Task UpdateLinksAsync(IAwsManager awsManager,
-            ISourceBlock<Tuple<AnnotatedPath, IFileFingerprint>> linkBlobs,
+            ISourceBlock<Tuple<AnnotatedPath, FileFingerprint>> linkBlobs,
             CancellationToken cancellationToken)
         {
             try

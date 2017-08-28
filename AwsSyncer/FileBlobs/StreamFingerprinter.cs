@@ -23,11 +23,17 @@ using System.IO;
 using System.Security.Cryptography;
 using System.Threading;
 using System.Threading.Tasks;
+using AwsSyncer.Types;
 using KeccakOpt;
 
 namespace AwsSyncer.FileBlobs
 {
-    public class StreamFingerprinter
+    public interface IStreamFingerprinter
+    {
+        Task<BlobFingerprint> GetFingerprintAsync(Stream stream, CancellationToken cancellationToken);
+    }
+
+    public class StreamFingerprinter : IStreamFingerprinter
     {
         const int BufferSize = 256 * 1024;
         readonly ConcurrentStack<byte[]> _buffers = new ConcurrentStack<byte[]>();

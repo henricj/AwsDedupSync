@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2014-2016 Henric Jungheim <software@henric.org>
+﻿// Copyright (c) 2014-2017 Henric Jungheim <software@henric.org>
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a
 // copy of this software and associated documentation files (the "Software"),
@@ -22,9 +22,9 @@ using System;
 using System.Linq;
 using AwsSyncer.AWS;
 
-namespace AwsSyncer.FileBlobs
+namespace AwsSyncer.Types
 {
-    public class BlobFingerprint : IEquatable<BlobFingerprint>
+    public sealed class BlobFingerprint : IEquatable<BlobFingerprint>
     {
         public BlobFingerprint(long size, byte[] sha3_512, byte[] sha2_256, byte[] md5)
         {
@@ -55,8 +55,6 @@ namespace AwsSyncer.FileBlobs
             Md5 = md5;
         }
 
-        #region IBlobFingerprint Members
-
         public long Size { get; }
         public byte[] Sha3_512 { get; }
         public byte[] Sha2_256 { get; }
@@ -76,7 +74,15 @@ namespace AwsSyncer.FileBlobs
                    && Md5.SequenceEqual(other.Md5);
         }
 
-        #endregion // IBlobFingerprint Members
+        public static bool operator ==(BlobFingerprint left, BlobFingerprint right)
+        {
+            return Equals(left, right);
+        }
+
+        public static bool operator !=(BlobFingerprint left, BlobFingerprint right)
+        {
+            return !Equals(left, right);
+        }
 
         #region Object
 

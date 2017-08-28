@@ -19,7 +19,7 @@
 // DEALINGS IN THE SOFTWARE.
 
 using System;
-using AwsSyncer.FileBlobs;
+using AwsSyncer.Types;
 using AwsSyncer.Utility;
 
 namespace AwsSyncer.AWS
@@ -31,7 +31,7 @@ namespace AwsSyncer.AWS
         string BlobPrefix { get; }
         string TreePrefix { get; }
 
-        string GetBlobPath(IFileFingerprint fileFingerprint);
+        string GetBlobPath(FileFingerprint fileFingerprint);
         string GetKeyFromBlobPath(string blobPath);
 
         string GetTreeNamePrefix(string name);
@@ -90,7 +90,7 @@ namespace AwsSyncer.AWS
         public string Bucket { get; }
         public Uri AwsS3Url { get; }
 
-        public string GetBlobPath(IFileFingerprint fileFingerprint)
+        public string GetBlobPath(FileFingerprint fileFingerprint)
         {
             return BlobPrefix + fileFingerprint.Fingerprint.Key();
         }

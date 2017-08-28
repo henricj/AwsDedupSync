@@ -28,11 +28,21 @@ using AwsSyncer.Types;
 
 namespace AwsSyncer.FileBlobs
 {
-    public sealed class BlobManager : IDisposable
+    public interface IBlobManager : IDisposable
     {
-        readonly FileFingerprintManager _fileFingerprintManager;
+        Task LoadAsync(CollectionPath[] paths,
+            Func<FileInfo, bool> filePredicate,
+            ITargetBlock<Tuple<AnnotatedPath, FileFingerprint>> joinedTargetBlock,
+            CancellationToken cancellationToken);
 
-        public BlobManager(FileFingerprintManager fileFingerprintManager)
+        Task ShutdownAsync(CancellationToken cancellationToken);
+    }
+
+    public sealed class BlobManager : IBlobManager
+    {
+        readonly IFileFingerprintManager _fileFingerprintManager;
+
+        public BlobManager(IFileFingerprintManager fileFingerprintManager)
         {
             _fileFingerprintManager = fileFingerprintManager ?? throw new ArgumentNullException(nameof(fileFingerprintManager));
         }
@@ -48,7 +58,7 @@ namespace AwsSyncer.FileBlobs
 
         public async Task LoadAsync(CollectionPath[] paths,
             Func<FileInfo, bool> filePredicate,
-            ITargetBlock<Tuple<AnnotatedPath, IFileFingerprint>> joinedTargetBlock,
+            ITargetBlock<Tuple<AnnotatedPath, FileFingerprint>> joinedTargetBlock,
             CancellationToken cancellationToken)
         {
             await _fileFingerprintManager.LoadAsync(cancellationToken).ConfigureAwait(false);
@@ -57,9 +67,16 @@ namespace AwsSyncer.FileBlobs
                 .ConfigureAwait(false);
         }
 
+        public Task ShutdownAsync(CancellationToken cancellationToken)
+        {
+            Debug.WriteLine("BlobManager.ShutdownAsync()");
+
+            return _fileFingerprintManager.ShutdownAsync(cancellationToken);
+        }
+
         async Task GenerateFileFingerprintsAsync(CollectionPath[] paths,
             Func<FileInfo, bool> filePredicate,
-            ITargetBlock<Tuple<AnnotatedPath, IFileFingerprint>> joinedTargetBlock,
+            ITargetBlock<Tuple<AnnotatedPath, FileFingerprint>> joinedTargetBlock,
             CancellationToken cancellationToken)
         {
             try
@@ -71,7 +88,7 @@ namespace AwsSyncer.FileBlobs
 
                 annotatedPathBroadcastBlock.LinkTo(joiner.AnnotatedPathsBlock, new DataflowLinkOptions { PropagateCompletion = true });
 
-                var fileFingerprintBroadcastBlock = new BroadcastBlock<IFileFingerprint>(ff => ff,
+                var fileFingerprintBroadcastBlock = new BroadcastBlock<FileFingerprint>(ff => ff,
                     new DataflowBlockOptions { CancellationToken = cancellationToken });
 
                 fileFingerprintBroadcastBlock.LinkTo(joiner.FileFingerprintBlock, new DataflowLinkOptions { PropagateCompletion = true });
@@ -100,13 +117,6 @@ namespace AwsSyncer.FileBlobs
             {
                 Debug.WriteLine("BlobManager.GenerateFileFingerprintsAsync() is done");
             }
-        }
-
-        public Task ShutdownAsync(CancellationToken cancellationToken)
-        {
-            Debug.WriteLine("BlobManager.ShutdownAsync()");
-
-            return _fileFingerprintManager.ShutdownAsync(cancellationToken);
         }
     }
 }

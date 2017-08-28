@@ -56,14 +56,6 @@ namespace AwsSyncer.FileBlobs
                 PropagateCompletion = true
             });
 
-            return PostAllFilePathsAsync(paths, filePredicate, batcher, cancellationToken);
-        }
-
-        static Task PostAllFilePathsAsync(IEnumerable<CollectionPath> paths,
-            Func<FileInfo, bool> filePredicate,
-            ITargetBlock<AnnotatedPath> filePathTargetBlock,
-            CancellationToken cancellationToken)
-        {
             var scanTasks = paths
                 .Select<CollectionPath, Task>(path =>
                     Task.Factory.StartNew(
@@ -76,9 +68,9 @@ namespace AwsSyncer.FileBlobs
 
                                 var relativePath = PathUtil.MakeRelativePath(path.Path, file.FullName);
 
-                                var annotatedPath = new AnnotatedPath { FileInfo = file, Collection = path.Collection ?? path.Path, RelativePath = relativePath };
+                                var annotatedPath = new AnnotatedPath(file, path.Collection ?? path.Path, relativePath);
 
-                                await filePathTargetBlock.SendAsync(annotatedPath, cancellationToken).ConfigureAwait(false);
+                                await batcher.SendAsync(annotatedPath, cancellationToken).ConfigureAwait(false);
                             }
                         },
                         cancellationToken,
@@ -87,11 +79,11 @@ namespace AwsSyncer.FileBlobs
 
             var task = Task.WhenAll(scanTasks);
 
-            var localFilePathTargetBlock = filePathTargetBlock;
+            var localFilePathTargetBlock = (ITargetBlock<AnnotatedPath>)batcher;
 
             var completeTask = task.ContinueWith(_ => localFilePathTargetBlock.Complete(), cancellationToken);
 
-            TaskCollector.Default.Add(completeTask, "PostAllFilePathsAsync");
+            TaskCollector.Default.Add(completeTask, "GenerateAnnotatedPathsAsync");
 
             return task;
         }
