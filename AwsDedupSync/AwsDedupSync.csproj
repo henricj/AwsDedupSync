@@ -12,6 +12,7 @@
     <ApplicationIcon />
     <OutputType>Exe</OutputType>
     <StartupObject />
+    <ApplicationManifest>AwsDedupSync.manifest</ApplicationManifest>
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="ConsoleCancel.cs" />
@@ -25,6 +26,7 @@
     <None Include="App.config">
       <SubType>Designer</SubType>
     </None>
+    <None Include="AwsDedupSync.manifest" />
     <None Include="s3\iam policy.json" />
   </ItemGroup>
   <ItemGroup>
