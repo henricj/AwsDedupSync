@@ -85,8 +85,8 @@ namespace AwsDedupSync
 
                 Console.WriteLine("Elapsed {0} CPU {1} User {2} Priv {3}",
                     sw.Elapsed, process.TotalProcessorTime, process.UserProcessorTime, process.PrivilegedProcessorTime);
-                Console.WriteLine("Peak Memory: Virtual {0:F1}MiB Paged {1:F1}MiB Working {2:F1}MiB",
-                    process.PeakVirtualMemorySize64.BytesToMiB(), process.PeakPagedMemorySize64.BytesToMiB(), process.PeakWorkingSet64.BytesToMiB());
+                Console.WriteLine("Peak Memory: Virtual {0:F1}GiB Paged {1:F1}MiB Working {2:F1}MiB",
+                    process.PeakVirtualMemorySize64.BytesToGiB(), process.PeakPagedMemorySize64.BytesToMiB(), process.PeakWorkingSet64.BytesToMiB());
             }
         }
     }
