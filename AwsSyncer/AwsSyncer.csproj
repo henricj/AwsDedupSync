@@ -1,14 +1,15 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <TargetFramework>net471</TargetFramework>
+    <TargetFramework>net48</TargetFramework>
     <RuntimeIdentifiers>win7-x64;win7-x86</RuntimeIdentifiers>
     <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
     <EnableDefaultNoneItems>false</EnableDefaultNoneItems>
-    <Copyright>Copyright © Henric Jungheim 2014-2017</Copyright>
+    <Copyright>Copyright © Henric Jungheim 2014-2019</Copyright>
     <Authors>Henric Jungheim</Authors>
     <Company>Henric Jungheim</Company>
     <Platforms>x64;x86</Platforms>
+    <LangVersion>7.3</LangVersion>
   </PropertyGroup>
   <!--<PropertyGroup Condition="'$(TargetFramework)' == 'net47' And '$(Platform)' == 'x64'">
     <RuntimeIdentifier>win7-x64</RuntimeIdentifier>
