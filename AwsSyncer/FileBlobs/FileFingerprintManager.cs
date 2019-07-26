@@ -174,7 +174,7 @@ namespace AwsSyncer.FileBlobs
 
                 Debug.WriteLine($"FileFingerprintManager.ProcessFileAsync({fileInfo.FullName}) scanned {fingerprint.Size.BytesToMiB():F3}MiB in {sw.Elapsed}");
 
-                var fileFingerprint = new FileFingerprint(fileInfo.FullName, fileInfo.LastWriteTimeUtc, fingerprint);
+                var fileFingerprint = new FileFingerprint(fileInfo.FullName, fileInfo.LastWriteTimeUtc, fingerprint, false);
 
                 fileInfo.Refresh();
 

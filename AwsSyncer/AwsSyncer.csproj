@@ -18,6 +18,9 @@
     <RuntimeIdentifier>win7-x86</RuntimeIdentifier>
   </PropertyGroup>-->
   <ItemGroup>
+    <Compile Include="FingerprintStore\MemoryStreamExtensions.cs" />
+    <Compile Include="FingerprintStore\MessagePackFileFingerprintStore.cs" />
+    <Compile Include="FingerprintStore\MessagePackFileFingerprintStore.FileFingerprintWriter.cs" />
     <Compile Include="FingerprintStore\ZeroFileFingerprintStore.cs" />
     <Compile Include="FingerprintStore\IFileFingerprintStore.cs" />
     <Compile Include="Types\AnnotatedPath.cs" />
@@ -60,9 +63,14 @@
     <PackageReference Include="AWSSDK.S3">
       <Version>3.3.104.4</Version>
     </PackageReference>
+    <PackageReference Include="MessagePack" Version="1.7.3.7" />
     <PackageReference Include="Newtonsoft.Json.Bson">
       <Version>1.0.2</Version>
     </PackageReference>
+    <PackageReference Include="System.Configuration.ConfigurationManager" Version="4.5.0" />
+    <PackageReference Include="System.Diagnostics.Tracing" Version="4.3.0" />
+    <PackageReference Include="System.IO.Packaging" Version="4.5.0" />
+    <PackageReference Include="System.IO.Pipelines" Version="4.5.3" />
     <PackageReference Include="System.Threading.Tasks.Dataflow">
       <Version>4.9.0</Version>
     </PackageReference>
@@ -70,7 +78,6 @@
     <PackageReference Include="ZeroFormatter.Analyzer" Version="1.1.1" />
   </ItemGroup>
   <ItemGroup>
-    <Reference Include="System.Configuration" />
     <Reference Include="System.Web" />
   </ItemGroup>
 </Project>

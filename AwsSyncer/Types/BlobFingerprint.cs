@@ -20,10 +20,12 @@
 
 using System;
 using System.Linq;
+using System.Runtime.Serialization;
 using AwsSyncer.AWS;
 
 namespace AwsSyncer.Types
 {
+    [DataContract]
     public sealed class BlobFingerprint : IEquatable<BlobFingerprint>
     {
         public BlobFingerprint(long size, byte[] sha3_512, byte[] sha2_256, byte[] md5)
@@ -55,9 +57,13 @@ namespace AwsSyncer.Types
             Md5 = md5;
         }
 
+        [DataMember(Order = 0)]
         public long Size { get; }
+        [DataMember(Order = 1)]
         public byte[] Sha3_512 { get; }
+        [DataMember(Order = 2)]
         public byte[] Sha2_256 { get; }
+        [DataMember(Order = 3)]
         public byte[] Md5 { get; }
 
         public bool Equals(BlobFingerprint other)

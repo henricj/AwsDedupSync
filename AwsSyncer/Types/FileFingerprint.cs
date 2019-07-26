@@ -19,12 +19,21 @@
 // DEALINGS IN THE SOFTWARE.
 
 using System;
+using System.Runtime.Serialization;
 
 namespace AwsSyncer.Types
 {
+    [DataContract]
     public sealed class FileFingerprint : IEquatable<FileFingerprint>
     {
-        public FileFingerprint(string fullFilePath, DateTime lastModifiedUtc, BlobFingerprint fingerprint, bool wasCached = false)
+        public FileFingerprint(string fullFilePath, DateTime lastModifiedUtc, BlobFingerprint fingerprint)
+        {
+            Fingerprint = fingerprint ?? throw new ArgumentNullException(nameof(fingerprint));
+            FullFilePath = fullFilePath ?? throw new ArgumentNullException(nameof(fullFilePath));
+            LastModifiedUtc = lastModifiedUtc;
+        }
+
+        public FileFingerprint(string fullFilePath, DateTime lastModifiedUtc, BlobFingerprint fingerprint, bool wasCached)
         {
             Fingerprint = fingerprint ?? throw new ArgumentNullException(nameof(fingerprint));
             WasCached = wasCached;
@@ -32,10 +41,15 @@ namespace AwsSyncer.Types
             LastModifiedUtc = lastModifiedUtc;
         }
 
+        [DataMember(Order=0)]
         public string FullFilePath { get; }
+        [DataMember(Order = 1)]
         public DateTime LastModifiedUtc { get; }
+        [DataMember(Order = 2)]
         public BlobFingerprint Fingerprint { get; }
-        public bool WasCached { get; }
+
+        [IgnoreDataMember]
+        public bool WasCached { get; } = true;
 
         public bool Equals(FileFingerprint other)
         {

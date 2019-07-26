@@ -64,7 +64,7 @@ namespace AwsDedupSync
                 .Distinct()
                 .ToArray();
 
-            using (var blobManager = new BlobManager(new FileFingerprintManager(new BsonFileFingerprintStore(), new StreamFingerprinter())) as IBlobManager)
+            using (var blobManager = new BlobManager(new FileFingerprintManager(new MessagePackFileFingerprintStore(), new StreamFingerprinter())) as IBlobManager)
             {
                 try
                 {
