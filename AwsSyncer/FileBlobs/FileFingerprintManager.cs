@@ -78,7 +78,7 @@ namespace AwsSyncer.FileBlobs
         {
             Debug.WriteLine("FileFingerprintManager.ShutdownAsync()");
 
-            await _blobPathStore.FlushAsync(cancellationToken).ConfigureAwait(false);
+            await _blobPathStore.CloseAsync(cancellationToken).ConfigureAwait(false);
         }
 
         public async Task LoadAsync(CancellationToken cancellationToken)

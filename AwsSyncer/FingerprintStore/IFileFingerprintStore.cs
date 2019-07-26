@@ -11,7 +11,7 @@ namespace AwsSyncer.FingerprintStore
         int UpdateCount { get; }
         long UpdateSize { get; }
         Task<IReadOnlyDictionary<string, FileFingerprint>> LoadBlobsAsync(CancellationToken cancellationToken);
-        Task FlushAsync(CancellationToken cancellationToken);
+        Task CloseAsync(CancellationToken cancellationToken);
         Task StoreBlobsAsync(ICollection<FileFingerprint> fileFingerprints, CancellationToken cancellationToken);
     }
 }

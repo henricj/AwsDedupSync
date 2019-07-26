@@ -94,7 +94,7 @@ namespace AwsSyncer.FingerprintStore
             return EmptyFileFingerprints;
         }
 
-        public async Task FlushAsync(CancellationToken cancellationToken)
+        public async Task CloseAsync(CancellationToken cancellationToken)
         {
             using (await _lock.LockAsync(cancellationToken).ConfigureAwait(false))
             {
