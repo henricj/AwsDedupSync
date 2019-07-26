@@ -57,13 +57,13 @@
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="AWSSDK.S3">
-      <Version>3.3.18</Version>
+      <Version>3.3.104.4</Version>
     </PackageReference>
     <PackageReference Include="Newtonsoft.Json.Bson">
-      <Version>1.0.1</Version>
+      <Version>1.0.2</Version>
     </PackageReference>
     <PackageReference Include="System.Threading.Tasks.Dataflow">
-      <Version>4.8.0</Version>
+      <Version>4.9.0</Version>
     </PackageReference>
   </ItemGroup>
   <ItemGroup>
