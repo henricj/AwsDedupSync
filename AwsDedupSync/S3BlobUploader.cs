@@ -104,7 +104,7 @@ namespace AwsDedupSync
 #if DEBUG
             var uploadDoneTask = uploader.Completion
                 .ContinueWith(
-                    _ => Debug.WriteLine($"Done uploading blobs: {blobCount} items {blobTotalSize.BytesToGiB():F2}GiB"), cancellationToken);
+                    _ => Console.WriteLine($"Upload complete: {blobCount} items {blobTotalSize.BytesToGiB():F2}GiB"), cancellationToken);
 
             tasks.Add(uploadDoneTask);
 #endif

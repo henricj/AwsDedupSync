@@ -39,7 +39,7 @@ namespace AwsSyncer.FingerprintStore
     {
         static readonly DirectoryInfo MsgPackDirectory = GetMsgPackDirectory();
         static readonly Dictionary<string, FileFingerprint> EmptyFileFingerprints = new Dictionary<string, FileFingerprint>();
-        static readonly IMessagePackFormatter<int> IntFormatter = MessagePackSerializer.DefaultResolver.GetFormatter<int>();
+        static readonly IMessagePackFormatter<int> IntFormatter = MessagePackSerializer.DefaultOptions.Resolver.GetFormatter<int>();
         readonly FileSequence _fileSequence;
         readonly AsyncLock _lock = new AsyncLock();
         FileFingerprintWriter _writer;
@@ -268,6 +268,21 @@ namespace AwsSyncer.FingerprintStore
                     {
                         var workBuffer = ArrayPool<byte>.Shared.Rent(64 * 1024);
 
+                        bool ReadInteger(out int integer, out long consumed)
+                        {
+                            var messagePackReader = new MessagePackReader(workBuffer);
+
+                            integer = IntFormatter.Deserialize(ref messagePackReader, MessagePackSerializer.DefaultOptions);
+
+                            consumed = messagePackReader.Consumed;
+
+                            if (integer == 0) return true;
+
+                            if (integer < 0 || integer > workBuffer.Length) throw new FileFormatException($"Invalid block length {integer}");
+
+                            return false;
+                        }
+
                         try
                         {
                             for (; ; )
@@ -283,11 +298,9 @@ namespace AwsSyncer.FingerprintStore
 
                                     buffer.Slice(0, 5).CopyTo(workBuffer.AsSpan());
 
-                                    var length = IntFormatter.Deserialize(workBuffer, 0, MessagePackSerializer.DefaultResolver, out var actualSize);
+                                    if (ReadInteger(out var length, out var consumed)) return; // EOF
 
-                                    if (length == 0) return; // EOF
-
-                                    if (length < 0 || length > workBuffer.Length) throw new FileFormatException($"Invalid block length {length}");
+                                    var actualSize = consumed;
 
                                     buffer = buffer.Slice(actualSize);
 
