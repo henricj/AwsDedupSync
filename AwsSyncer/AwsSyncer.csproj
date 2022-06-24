@@ -10,6 +10,7 @@
     <Company>Henric Jungheim</Company>
     <Platforms>x64;x86</Platforms>
     <LangVersion>9.0</LangVersion>
+    <AnalysisLevel>latest-recommended</AnalysisLevel>
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="FingerprintStore\MemoryStreamExtensions.cs" />
