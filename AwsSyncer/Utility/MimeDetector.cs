@@ -18,25 +18,28 @@
 // FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
+using Microsoft.AspNetCore.StaticFiles;
+using Microsoft.Win32;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
-using System.Web;
-using Microsoft.Win32;
+using System.Runtime.Versioning;
 
 namespace AwsSyncer.Utility
 {
     // ReSharper disable once ClassNeverInstantiated.Global
     public class MimeDetector
     {
-        static readonly string DefaultMapping = MimeMapping.GetMimeMapping(".*");
+        static readonly FileExtensionContentTypeProvider FileExtensionContentTypeProvider = new();
 
-        static readonly Lazy<MimeDetector> DefaultInstance = new Lazy<MimeDetector>();
+        static readonly string DefaultMapping = "application/octet-stream";
 
-        readonly Dictionary<string, string> _mimeTypes =
-            new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        static readonly Lazy<MimeDetector> DefaultInstance = new();
+
+        static readonly Dictionary<string, string> MimeTypes =
+            new(StringComparer.OrdinalIgnoreCase)
             {
                 { ".323", "text/h323" },
                 { ".3g2", "video/3gpp2" },
@@ -610,6 +613,9 @@ namespace AwsSyncer.Utility
 
         public MimeDetector()
         {
+            if (!OperatingSystem.IsWindows())
+                return;
+
             try
             {
                 ScanRegistry();
@@ -622,37 +628,34 @@ namespace AwsSyncer.Utility
 
         public static MimeDetector Default => DefaultInstance.Value;
 
-        void ScanRegistry()
+        [SupportedOSPlatform("windows")]
+        static void ScanRegistry()
         {
             foreach (var extension in Registry.ClassesRoot
                 .GetSubKeyNames()
-                .Where(sk => !string.IsNullOrWhiteSpace(sk) && sk.StartsWith(".")))
+                .Where(sk => !string.IsNullOrWhiteSpace(sk) && sk[0] == '.'))
             {
-                using (var key = Registry.ClassesRoot.OpenSubKey(extension))
-                {
-                    var mimeType = key?.GetValue("Content Type") as string;
+                using var key = Registry.ClassesRoot.OpenSubKey(extension);
+                var mimeType = key?.GetValue("Content Type") as string;
 
-                    if (string.IsNullOrWhiteSpace(mimeType))
+                if (string.IsNullOrWhiteSpace(mimeType))
+                    continue;
+
+                if (MimeTypes.TryGetValue(extension, out var existingMimeType))
+                {
+                    if (string.Equals(mimeType, existingMimeType, StringComparison.OrdinalIgnoreCase))
                         continue;
 
-                    if (_mimeTypes.TryGetValue(extension, out var existingMimeType))
-                    {
-                        if (string.Equals(mimeType, existingMimeType, StringComparison.OrdinalIgnoreCase))
-                            continue;
-
-                        //Debug.WriteLine("MimeDetector {0} {1} -> {2}", extension, existingMimeType, mimeType);
-                    }
-
-                    _mimeTypes[extension] = mimeType;
+                    //Debug.WriteLine("MimeDetector {0} {1} -> {2}", extension, existingMimeType, mimeType);
                 }
+
+                MimeTypes[extension] = mimeType;
             }
         }
 
-        public string GetMimeType(string filename)
+        public static string GetMimeType(string filename)
         {
-            var mimeType = MimeMapping.GetMimeMapping(filename);
-
-            if (mimeType != DefaultMapping)
+            if (FileExtensionContentTypeProvider.TryGetContentType(filename, out var mimeType))
                 return mimeType;
 
             var ext = Path.GetExtension(filename);
@@ -660,7 +663,7 @@ namespace AwsSyncer.Utility
             if (string.IsNullOrEmpty(ext))
                 return DefaultMapping;
 
-            if (_mimeTypes.TryGetValue(ext, out mimeType))
+            if (MimeTypes.TryGetValue(ext, out mimeType))
                 return mimeType;
 
             return DefaultMapping;

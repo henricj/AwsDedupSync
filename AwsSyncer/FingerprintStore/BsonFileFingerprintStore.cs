@@ -18,6 +18,10 @@
 // FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
+using AwsSyncer.Types;
+using AwsSyncer.Utility;
+using Newtonsoft.Json;
+using Newtonsoft.Json.Bson;
 using System;
 using System.Collections.Generic;
 using System.Configuration;
@@ -26,19 +30,15 @@ using System.IO;
 using System.IO.Compression;
 using System.Threading;
 using System.Threading.Tasks;
-using AwsSyncer.Types;
-using AwsSyncer.Utility;
-using Newtonsoft.Json;
-using Newtonsoft.Json.Bson;
 
 namespace AwsSyncer.FingerprintStore
 {
     public sealed class BsonFileFingerprintStore : IFileFingerprintStore
     {
         static readonly DirectoryInfo BsonDirectory = GetBsonDirectory();
-        static readonly Dictionary<string, FileFingerprint> EmptyFileFingerprints = new Dictionary<string, FileFingerprint>();
+        static readonly Dictionary<string, FileFingerprint> EmptyFileFingerprints = new();
         readonly FileSequence _fileSequence;
-        readonly AsyncLock _lock = new AsyncLock();
+        readonly AsyncLock _lock = new();
         Stream _bsonFile;
         Stream _bufferStream;
         DeflateStream _encodeStream;
@@ -202,11 +202,15 @@ namespace AwsSyncer.FingerprintStore
                     if (fileInfo.Length < 5)
                         continue;
 
-                    using (var fileStream = OpenBsonFileForRead(fileInfo))
-                    using (var decodeStream = new DeflateStream(fileStream, CompressionMode.Decompress))
-                    using (var bs = new SequentialReadStream(decodeStream))
-                    using (var br = new BsonDataReader(bs) { DateTimeKindHandling = DateTimeKind.Utc, SupportMultipleContent = true })
+                    var fileStream = OpenBsonFileForRead(fileInfo);
+                    var decodeStream = new DeflateStream(fileStream, CompressionMode.Decompress);
+                    var bs = new SequentialReadStream(decodeStream);
+
+                    await using (fileStream.ConfigureAwait(false))
+                    await using (decodeStream.ConfigureAwait(false))
+                    await using (fileStream.ConfigureAwait(false))
                     {
+                        using var br = new BsonDataReader(bs) { DateTimeKindHandling = DateTimeKind.Utc, SupportMultipleContent = true };
                         while (await br.ReadAsync(cancellationToken).ConfigureAwait(false))
                         {
                             cancellationToken.ThrowIfCancellationRequested();

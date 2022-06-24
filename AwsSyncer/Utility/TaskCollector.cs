@@ -28,9 +28,9 @@ namespace AwsSyncer.Utility
 {
     public class TaskCollector
     {
-        public static readonly TaskCollector Default = new TaskCollector();
-        readonly object _lock = new object();
-        readonly Dictionary<Task, string> _tasks = new Dictionary<Task, string>();
+        public static readonly TaskCollector Default = new();
+        readonly object _lock = new();
+        readonly Dictionary<Task, string> _tasks = new();
 
         //[Conditional("DEBUG")]
         public void Add(Task task, string description)

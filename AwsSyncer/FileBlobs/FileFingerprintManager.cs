@@ -18,19 +18,18 @@
 // FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
+using AwsSyncer.FingerprintStore;
+using AwsSyncer.Types;
+using AwsSyncer.Utility;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
-using System.Security.AccessControl;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Threading.Tasks.Dataflow;
-using AwsSyncer.FingerprintStore;
-using AwsSyncer.Types;
-using AwsSyncer.Utility;
 
 namespace AwsSyncer.FileBlobs
 {
@@ -161,8 +160,10 @@ namespace AwsSyncer.FileBlobs
 
                 var sw = Stopwatch.StartNew();
 
-                using (var s = new FileStream(fileInfo.FullName, FileMode.Open, FileSystemRights.Read, FileShare.Read,
-                    8192, FileOptions.Asynchronous | FileOptions.SequentialScan))
+                var s = new FileStream(fileInfo.FullName, FileMode.Open, FileAccess.Read, FileShare.Read,
+                    8192, FileOptions.Asynchronous | FileOptions.SequentialScan);
+
+                await using (s.ConfigureAwait(false))
                 {
                     fingerprint = await fp.GetFingerprintAsync(s, cancellationToken).ConfigureAwait(false);
                 }

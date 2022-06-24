@@ -18,10 +18,10 @@
 // FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
+using Microsoft.AspNetCore.WebUtilities;
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Web;
 
 namespace AwsSyncer.AWS
 {
@@ -48,7 +48,7 @@ namespace AwsSyncer.AWS
             {
                 buffer[0] = (byte)i;
 
-                var encoded = HttpServerUtility.UrlTokenEncode(buffer);
+                var encoded = S3EncodeKey(buffer);
 
                 foreach (var ch in encoded)
                     alphabet.Add(ch);
@@ -64,7 +64,7 @@ namespace AwsSyncer.AWS
 
         public static string S3EncodeKey(byte[] value)
         {
-            return HttpServerUtility.UrlTokenEncode(value);
+            return Base64UrlTextEncoder.Encode(value);
         }
     }
 }

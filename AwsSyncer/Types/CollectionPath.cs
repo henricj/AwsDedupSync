@@ -35,7 +35,7 @@ namespace AwsSyncer.Types
 
         public bool Equals(CollectionPath other)
         {
-            if (ReferenceEquals(null, other)) return false;
+            if (other is null) return false;
             if (ReferenceEquals(this, other)) return true;
 
             return string.Equals(Collection, other.Collection, StringComparison.OrdinalIgnoreCase) && string.Equals(Path, other.Path, StringComparison.OrdinalIgnoreCase);
@@ -48,7 +48,7 @@ namespace AwsSyncer.Types
 
         public override bool Equals(object obj)
         {
-            if (ReferenceEquals(null, obj)) return false;
+            if (obj is null) return false;
             if (ReferenceEquals(this, obj)) return true;
 
             return obj is CollectionPath path && Equals(path);

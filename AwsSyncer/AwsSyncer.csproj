@@ -59,6 +59,8 @@
       <Version>3.7.9.18</Version>
     </PackageReference>
     <PackageReference Include="MessagePack" Version="2.3.112" />
+    <PackageReference Include="Microsoft.AspNetCore.StaticFiles" Version="2.2.0" />
+    <PackageReference Include="Microsoft.AspNetCore.WebUtilities" Version="2.2.0" />
     <PackageReference Include="Newtonsoft.Json.Bson">
       <Version>1.0.2</Version>
     </PackageReference>

@@ -18,20 +18,20 @@
 // FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
+using AwsSyncer.AWS;
+using AwsSyncer.Types;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Threading.Tasks.Dataflow;
-using AwsSyncer.AWS;
-using AwsSyncer.Types;
 
 namespace AwsSyncer
 {
     public class LinkManager
     {
-        public async Task CreateLinksAsync(IAwsManager awsManager,
+        public static async Task CreateLinksAsync(IAwsManager awsManager,
             ISourceBlock<Tuple<AnnotatedPath, FileFingerprint>> blobSourceBlock,
             bool actuallyWrite,
             CancellationToken cancellationToken)
@@ -101,7 +101,7 @@ namespace AwsSyncer
 
                     var relativePath = path.RelativePath;
 
-                    if (relativePath.StartsWith(".."))
+                    if (relativePath.StartsWith("..", StringComparison.Ordinal))
                         throw new InvalidOperationException($"Create link for invalid path {relativePath}");
 
                     if (relativePath.StartsWith("file:", StringComparison.OrdinalIgnoreCase))
@@ -137,7 +137,7 @@ namespace AwsSyncer
             var key = createLinkRequest.FileFingerprint.Fingerprint.Key();
 
             Console.WriteLine("Link {0} \"{1}\" -> {2} ({3})",
-                createLinkRequest.Collection, relativePath, key.Substring(0, 12),
+                createLinkRequest.Collection, relativePath, key[..12],
                 createLinkRequest.FileFingerprint.WasCached ? "cached" : "new");
 
             if (!actuallyWrite)
@@ -151,7 +151,7 @@ namespace AwsSyncer
             { }
             catch (Exception ex)
             {
-                Console.WriteLine("Link {0} {1} -> {2} failed: {3}", createLinkRequest.Collection, relativePath, key.Substring(0, 12), ex.Message);
+                Console.WriteLine("Link {0} {1} -> {2} failed: {3}", createLinkRequest.Collection, relativePath, key[..12], ex.Message);
             }
         }
     }

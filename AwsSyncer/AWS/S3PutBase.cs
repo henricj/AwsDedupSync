@@ -18,13 +18,13 @@
 // FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
+using Amazon.S3;
+using Amazon.S3.Model;
 using System;
 using System.Diagnostics;
 using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
-using Amazon.S3;
-using Amazon.S3.Model;
 
 namespace AwsSyncer.AWS
 {
@@ -44,7 +44,7 @@ namespace AwsSyncer.AWS
             if (response.HttpStatusCode != HttpStatusCode.OK)
                 Debug.WriteLine("now what?");
 
-            if (!string.IsNullOrEmpty(request.ETag) && !string.Equals(response.ETag, request.ETag, StringComparison.CurrentCultureIgnoreCase))
+            if (!string.IsNullOrEmpty(request.ETag) && !string.Equals(response.ETag, request.ETag, StringComparison.OrdinalIgnoreCase))
             {
                 Debug.WriteLine($"Unexpected ETag mismatch: {response.ETag} != {request.ETag}");
             }

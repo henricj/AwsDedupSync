@@ -18,15 +18,15 @@
 // FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
+using Amazon.S3;
+using AwsSyncer.Types;
+using AwsSyncer.Utility;
 using System;
 using System.Collections.Generic;
 using System.Configuration;
 using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
-using Amazon.S3;
-using AwsSyncer.Types;
-using AwsSyncer.Utility;
 
 namespace AwsSyncer.AWS
 {

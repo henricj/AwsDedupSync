@@ -25,6 +25,6 @@ namespace AwsDedupSync
         public bool ActuallyWrite { get; set; } = true;
         public bool UpdateLinks { get; set; } = true;
         public bool UploadBlobs { get; set; } = true;
-        public bool UpdateMeta { get; set; } = false;
+        public bool UpdateMeta { get; set; }
     }
 }

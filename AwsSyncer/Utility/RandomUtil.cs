@@ -27,7 +27,7 @@ namespace AwsSyncer.Utility
 {
     public static class RandomUtil
     {
-        static readonly ThreadLocal<Random> LocalRandom = new ThreadLocal<Random>(CreateRandom);
+        static readonly ThreadLocal<Random> LocalRandom = new(CreateRandom);
 
         public static Random ThreadLocalRandom => LocalRandom.Value;
 

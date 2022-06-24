@@ -93,7 +93,7 @@ namespace AwsSyncer.Utility
 
         public override async Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken)
         {
-            var length = await _baseStream.ReadAsync(buffer, offset, count, cancellationToken).ConfigureAwait(false);
+            var length = await _baseStream.ReadAsync(buffer.AsMemory(offset, count), cancellationToken).ConfigureAwait(false);
 
             if (length > 0)
                 _position += length;
@@ -101,7 +101,36 @@ namespace AwsSyncer.Utility
             return length;
         }
 
+        public override int Read(Span<byte> buffer)
+        {
+            var length = base.Read(buffer);
+
+            if (length > 0)
+                _position += length;
+
+            return length;
+        }
+
+        public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
+        {
+            var length = await base.ReadAsync(buffer, cancellationToken).ConfigureAwait(false);
+
+            if (length > 0)
+                _position += length;
+
+            return length;
+        }
         public override void Write(byte[] buffer, int offset, int count)
+        {
+            throw new NotSupportedException();
+        }
+
+        public override Task WriteAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken)
+        {
+            throw new NotSupportedException();
+        }
+
+        public override ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken = default)
         {
             throw new NotSupportedException();
         }

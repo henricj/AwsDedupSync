@@ -18,11 +18,11 @@
 // FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
+using AwsSyncer.Utility;
 using System;
 using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
-using AwsSyncer.Utility;
 
 namespace AwsDedupSync
 {
@@ -42,7 +42,7 @@ namespace AwsDedupSync
                 var runTask = runAsync(cts.Token);
 
                 // It would be nice if Console.In.ReadLineAsync() didn't block...
-                var readTask = Task.Run(() => Console.ReadLine(), cts.Token);
+                var readTask = Task.Run(Console.ReadLine, cts.Token);
 
                 var anyTask = await Task.WhenAny(readTask, runTask).ConfigureAwait(false);
 

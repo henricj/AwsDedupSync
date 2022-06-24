@@ -41,7 +41,7 @@ namespace AwsSyncer.Types
             LastModifiedUtc = lastModifiedUtc;
         }
 
-        [DataMember(Order=0)]
+        [DataMember(Order = 0)]
         public string FullFilePath { get; }
         [DataMember(Order = 1)]
         public DateTime LastModifiedUtc { get; }
@@ -53,7 +53,7 @@ namespace AwsSyncer.Types
 
         public bool Equals(FileFingerprint other)
         {
-            if (ReferenceEquals(null, other)) return false;
+            if (other is null) return false;
             if (ReferenceEquals(this, other)) return true;
 
             return string.Equals(FullFilePath, other.FullFilePath, StringComparison.OrdinalIgnoreCase)
@@ -63,7 +63,7 @@ namespace AwsSyncer.Types
 
         public override bool Equals(object obj)
         {
-            if (ReferenceEquals(null, obj)) return false;
+            if (obj is null) return false;
             if (ReferenceEquals(this, obj)) return true;
 
             return obj is FileFingerprint ff && Equals(ff);

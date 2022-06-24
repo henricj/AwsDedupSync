@@ -18,18 +18,17 @@
 // FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
+using Amazon.S3;
+using Amazon.S3.Model;
+using AwsSyncer.Types;
+using AwsSyncer.Utility;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
-using System.Security.AccessControl;
 using System.Threading;
 using System.Threading.Tasks;
-using Amazon.S3;
-using Amazon.S3.Model;
-using AwsSyncer.Types;
-using AwsSyncer.Utility;
 
 namespace AwsSyncer.AWS
 {
@@ -102,16 +101,17 @@ namespace AwsSyncer.AWS
         {
             var request = (UploadBlobRequest)uploadBlobRequest;
 
-            Debug.WriteLine($"S3Blobs.UploadBlobAsync() {request.FileFingerprint.FullFilePath} ({request.FileFingerprint.Fingerprint.Key().Substring(0, 12)})");
+            Debug.WriteLine($"S3Blobs.UploadBlobAsync() {request.FileFingerprint.FullFilePath} ({request.FileFingerprint.Fingerprint.Key()[..12]})");
 
             var putObjectRequest = request.Request;
 
             var bufferSize = (int)Math.Min(81920, Math.Max(1024, request.FileFingerprint.Fingerprint.Size));
 
-            using (var s = new FileStream(uploadBlobRequest.FileFingerprint.FullFilePath,
-                FileMode.Open, FileSystemRights.Read, FileShare.Read,
-                bufferSize,
-                FileOptions.Asynchronous | FileOptions.SequentialScan))
+            var s = new FileStream(uploadBlobRequest.FileFingerprint.FullFilePath,
+                FileMode.Open, FileAccess.Read, FileShare.Read, bufferSize,
+                FileOptions.Asynchronous | FileOptions.SequentialScan);
+
+            await using (s.ConfigureAwait(false))
             {
                 putObjectRequest.InputStream = s;
 
@@ -121,7 +121,7 @@ namespace AwsSyncer.AWS
 
         public IUploadBlobRequest BuildUploadBlobRequest(Tuple<FileFingerprint, AnnotatedPath> tuple)
         {
-            Debug.WriteLine($"S3Blobs.BuildUploadRequest() {tuple.Item1.FullFilePath} ({tuple.Item1.Fingerprint.Key().Substring(0, 12)})");
+            Debug.WriteLine($"S3Blobs.BuildUploadRequest() {tuple.Item1.FullFilePath} ({tuple.Item1.Fingerprint.Key()[..12]})");
 
             var blobKey = _pathManager.GetBlobPath(tuple.Item1);
 
@@ -147,7 +147,7 @@ namespace AwsSyncer.AWS
                 MD5Digest = md5Digest,
                 Headers =
                 {
-                    ContentType = MimeDetector.Default.GetMimeType(fullFilePath),
+                    ContentType = MimeDetector.GetMimeType(fullFilePath),
                     ContentLength = fingerprint.Size,
                     ContentMD5 = md5Digest
                 },

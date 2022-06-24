@@ -29,7 +29,7 @@ namespace AwsSyncer.FingerprintStore
 {
     public class FileSequence
     {
-        static readonly List<FileInfo> EmptyFiles = new List<FileInfo>();
+        static readonly List<FileInfo> EmptyFiles = new();
         readonly DirectoryInfo _directory;
         List<FileInfo> _files = EmptyFiles;
 
@@ -79,9 +79,7 @@ namespace AwsSyncer.FingerprintStore
             var count = 1;
 
             if (_files.Count > 0)
-            {
-                count = int.Parse(_files[_files.Count - 1].Name) + 1;
-            }
+                count = int.Parse(_files[^1].Name, CultureInfo.InvariantCulture) + 1;
 
             var fileName = Path.Combine(_directory.FullName, count.ToString(CultureInfo.InvariantCulture));
 

@@ -18,15 +18,15 @@
 // FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
+using AwsSyncer.AWS;
+using AwsSyncer.Types;
+using AwsSyncer.Utility;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Threading.Tasks.Dataflow;
-using AwsSyncer.AWS;
-using AwsSyncer.Types;
-using AwsSyncer.Utility;
 
 namespace AwsDedupSync
 {
@@ -58,9 +58,9 @@ namespace AwsDedupSync
                     {
                         // We can't check multipart uploads this way since we don't know the size
                         // of the individual parts.
-                        if (etag.Contains("-"))
+                        if (etag.Contains('-'))
                         {
-                            Debug.WriteLine($"{tuple.Item1.FullFilePath} is a multi-part upload with ETag {etag} {tuple.Item1.Fingerprint.Key().Substring(0, 12)}");
+                            Debug.WriteLine($"{tuple.Item1.FullFilePath} is a multi-part upload with ETag {etag} {tuple.Item1.Fingerprint.Key()[..12]}");
 
                             return null;
                         }
@@ -70,7 +70,7 @@ namespace AwsDedupSync
                         if (string.Equals(expectedETag, etag, StringComparison.OrdinalIgnoreCase))
                             return null;
 
-                        Console.WriteLine($"ERROR: {tuple.Item1.FullFilePath} tag mismatch {etag}, expected {expectedETag} {tuple.Item1.Fingerprint.Key().Substring(0, 12)}");
+                        Console.WriteLine($"ERROR: {tuple.Item1.FullFilePath} tag mismatch {etag}, expected {expectedETag} {tuple.Item1.Fingerprint.Key()[..12]}");
                     }
 
                     var request = awsManager.BuildUploadBlobRequest(tuple);
@@ -120,7 +120,7 @@ namespace AwsDedupSync
 
             Console.WriteLine("Upload {0} as {1}",
                 uploadBlobRequest.FileFingerprint.FullFilePath,
-                uploadBlobRequest.FileFingerprint.Fingerprint.Key().Substring(0, 12));
+                uploadBlobRequest.FileFingerprint.Fingerprint.Key()[..12]);
 
             if (!_s3Settings.ActuallyWrite)
                 return;

@@ -18,13 +18,13 @@
 // FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
+using AwsSyncer.Types;
+using KeccakOpt;
 using System.Collections.Concurrent;
 using System.IO;
 using System.Security.Cryptography;
 using System.Threading;
 using System.Threading.Tasks;
-using AwsSyncer.Types;
-using KeccakOpt;
 
 namespace AwsSyncer.FileBlobs
 {
@@ -36,57 +36,56 @@ namespace AwsSyncer.FileBlobs
     public class StreamFingerprinter : IStreamFingerprinter
     {
         const int BufferSize = 256 * 1024;
-        readonly ConcurrentStack<byte[]> _buffers = new ConcurrentStack<byte[]>();
+        readonly ConcurrentStack<byte[]> _buffers = new();
 
+        [System.Diagnostics.CodeAnalysis.SuppressMessage("Security", "CA5351:Do Not Use Broken Cryptographic Algorithms", Justification = "MD5 is required for external API compatibility.")]
         public async Task<BlobFingerprint> GetFingerprintAsync(Stream stream, CancellationToken cancellationToken)
         {
-            using (var sha3 = new Keccak())
-            using (var sha256 = SHA256.Create())
-            using (var md5 = MD5.Create())
+            using var sha3 = new Keccak();
+            using var sha256 = SHA256.Create();
+            using var md5 = MD5.Create();
+            var buffers = new[] { AllocateBuffer(), AllocateBuffer() };
+            var index = 0;
+
+            var totalLength = 0L;
+
+            var readTask = stream.ReadAsync(buffers[index], 0, buffers[index].Length, cancellationToken);
+
+            for (; ; )
             {
-                var buffers = new[] { AllocateBuffer(), AllocateBuffer() };
-                var index = 0;
+                var length = await readTask.ConfigureAwait(false);
 
-                var totalLength = 0L;
+                if (length < 1)
+                    break;
 
-                var readTask = stream.ReadAsync(buffers[index], 0, buffers[index].Length, cancellationToken);
+                var buffer = buffers[index];
 
-                for (; ; )
-                {
-                    var length = await readTask.ConfigureAwait(false);
+                if (++index >= buffers.Length)
+                    index = 0;
 
-                    if (length < 1)
-                        break;
+                readTask = stream.ReadAsync(buffers[index], 0, buffers[index].Length, cancellationToken);
 
-                    var buffer = buffers[index];
+                totalLength += length;
 
-                    if (++index >= buffers.Length)
-                        index = 0;
+                sha3.TransformBlock(buffer, 0, length, buffer, 0);
 
-                    readTask = stream.ReadAsync(buffers[index], 0, buffers[index].Length, cancellationToken);
+                sha256.TransformBlock(buffer, 0, length, buffer, 0);
 
-                    totalLength += length;
-
-                    sha3.TransformBlock(buffer, 0, length, buffer, 0);
-
-                    sha256.TransformBlock(buffer, 0, length, buffer, 0);
-
-                    md5.TransformBlock(buffer, 0, length, buffer, 0);
-                }
-
-                sha3.TransformFinalBlock(buffers[0], 0, 0);
-
-                sha256.TransformFinalBlock(buffers[0], 0, 0);
-
-                md5.TransformFinalBlock(buffers[0], 0, 0);
-
-                foreach (var buffer in buffers)
-                    FreeBuffer(buffer);
-
-                var fingerprint = new BlobFingerprint(totalLength, sha3.Hash, sha256.Hash, md5.Hash);
-
-                return fingerprint;
+                md5.TransformBlock(buffer, 0, length, buffer, 0);
             }
+
+            sha3.TransformFinalBlock(buffers[0], 0, 0);
+
+            sha256.TransformFinalBlock(buffers[0], 0, 0);
+
+            md5.TransformFinalBlock(buffers[0], 0, 0);
+
+            foreach (var buffer in buffers)
+                FreeBuffer(buffer);
+
+            var fingerprint = new BlobFingerprint(totalLength, sha3.Hash, sha256.Hash, md5.Hash);
+
+            return fingerprint;
         }
 
         byte[] AllocateBuffer()

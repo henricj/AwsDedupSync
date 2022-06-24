@@ -18,21 +18,20 @@
 // FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
+using AwsSyncer.Types;
+using AwsSyncer.Utility;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using System.Threading.Tasks.Dataflow;
-using AwsSyncer.Types;
-using AwsSyncer.Utility;
 
 namespace AwsSyncer
 {
     class LinkFingerprintJoiner
     {
-        readonly ConcurrentDictionary<string, PathFingerprint> _join
-            = new ConcurrentDictionary<string, PathFingerprint>(StringComparer.CurrentCultureIgnoreCase);
+        readonly ConcurrentDictionary<string, PathFingerprint> _join = new(StringComparer.CurrentCultureIgnoreCase);
 
         readonly ITargetBlock<Tuple<AnnotatedPath, FileFingerprint>> _targetBlock;
 
@@ -120,8 +119,7 @@ namespace AwsSyncer
 
         class PathFingerprint
         {
-            public readonly Dictionary<Tuple<string, string>, AnnotatedPath> AnnotatedPaths
-                = new Dictionary<Tuple<string, string>, AnnotatedPath>();
+            public readonly Dictionary<Tuple<string, string>, AnnotatedPath> AnnotatedPaths = new();
 
             public FileFingerprint FileFingerprint;
         }

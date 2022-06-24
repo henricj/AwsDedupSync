@@ -18,10 +18,8 @@
 // FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
-using System;
 using System.Buffers;
 using System.IO;
-using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -29,55 +27,10 @@ namespace AwsSyncer.FingerprintStore
 {
     public static class MemoryStreamExtensions
     {
-        public static async Task WriteAsync(this Stream stream, ReadOnlyMemory<byte> readOnlyMemory, CancellationToken cancellationToken)
+        public static async ValueTask WriteAsync(this Stream stream, ReadOnlySequence<byte> readOnlySequence, CancellationToken cancellationToken)
         {
-            if (MemoryMarshal.TryGetArray(readOnlyMemory, out var segment))
-                await stream.WriteAsync(segment.Array, segment.Offset, segment.Count, cancellationToken).ConfigureAwait(false);
-            else
-            {
-                var writeBuffer = ArrayPool<byte>.Shared.Rent(readOnlyMemory.Length);
-
-                readOnlyMemory.CopyTo(writeBuffer);
-
-                await stream.WriteAsync(writeBuffer, 0, readOnlyMemory.Length, cancellationToken).ConfigureAwait(false);
-
-                ArrayPool<byte>.Shared.Return(writeBuffer);
-            }
-        }
-
-        public static async Task WriteAsync(this Stream stream, ReadOnlySequence<byte> readOnlySequence, CancellationToken cancellationToken)
-        {
-            byte[] writeBuffer = null;
-
-            //try
-            //{
             foreach (var readOnlyMemory in readOnlySequence)
-            {
-                if (MemoryMarshal.TryGetArray(readOnlyMemory, out var segment))
-                    await stream.WriteAsync(segment.Array, segment.Offset, segment.Count, cancellationToken).ConfigureAwait(false);
-                else
-                {
-                    if (null != writeBuffer && writeBuffer.Length < readOnlyMemory.Length)
-                    {
-                        var temp = writeBuffer;
-                        writeBuffer = null;
-
-                        ArrayPool<byte>.Shared.Return(temp);
-                    }
-
-                    if (null == writeBuffer)
-                        writeBuffer = ArrayPool<byte>.Shared.Rent(Math.Max(readOnlyMemory.Length, 64 * 1024));
-
-                    readOnlyMemory.CopyTo(writeBuffer);
-
-                    await stream.WriteAsync(writeBuffer, 0, readOnlyMemory.Length, cancellationToken).ConfigureAwait(false);
-                }
-            }
-            //}
-            //finally
-            //{
-            if (null != writeBuffer) ArrayPool<byte>.Shared.Return(writeBuffer);
-            //}
+                await stream.WriteAsync(readOnlyMemory, cancellationToken).ConfigureAwait(false);
         }
     }
 }

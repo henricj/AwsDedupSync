@@ -18,6 +18,7 @@
 // FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
+using AwsSyncer.Utility;
 using System;
 using System.Collections.Generic;
 using System.Configuration;
@@ -28,7 +29,6 @@ using System.Net;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
-using AwsSyncer.Utility;
 
 namespace AwsDedupSync
 {
@@ -55,39 +55,39 @@ namespace AwsDedupSync
                 ServicePointManager.DefaultConnectionLimit = 30;
 
             Console.Out.Close();
-            using (var writer = new StreamWriter(Console.OpenStandardOutput(), Utf8NoBom, 4 * 4096))
-            using (new Timer(_ => TaskCollector.Default.Add(Console.Out.FlushAsync(), "Console Flush"), null, 1000, 1000))
+
+            using var writer = new StreamWriter(Console.OpenStandardOutput(), Utf8NoBom, 4 * 4096);
+            using var _ = new Timer(_ => TaskCollector.Default.Add(Console.Out.FlushAsync(), "Console Flush"), null, 1000, 1000);
+
+            Console.SetOut(writer);
+
+            var syncRunner = CreateSyncRunner(args);
+
+            var sw = new Stopwatch();
+
+            try
             {
-                Console.SetOut(writer);
+                sw.Start();
 
-                var syncRunner = CreateSyncRunner(args);
+                ConsoleCancel.RunAsync(syncRunner, TimeSpan.Zero).GetAwaiter().GetResult();
 
-                var sw = new Stopwatch();
-
-                try
-                {
-                    sw.Start();
-
-                    ConsoleCancel.RunAsync(syncRunner, TimeSpan.Zero).GetAwaiter().GetResult();
-
-                    sw.Stop();
-                }
-                catch (Exception ex)
-                {
-                    sw.Stop();
-
-                    Console.WriteLine(ex.Message);
-                }
-
-                TaskCollector.Default.Wait();
-
-                var process = Process.GetCurrentProcess();
-
-                Console.WriteLine("Elapsed {0} CPU {1} User {2} Priv {3}",
-                    sw.Elapsed, process.TotalProcessorTime, process.UserProcessorTime, process.PrivilegedProcessorTime);
-                Console.WriteLine("Peak Memory: Virtual {0:F1}GiB Paged {1:F1}MiB Working {2:F1}MiB",
-                    process.PeakVirtualMemorySize64.BytesToGiB(), process.PeakPagedMemorySize64.BytesToMiB(), process.PeakWorkingSet64.BytesToMiB());
+                sw.Stop();
             }
+            catch (Exception ex)
+            {
+                sw.Stop();
+
+                Console.WriteLine(ex.Message);
+            }
+
+            TaskCollector.Default.Wait();
+
+            var process = Process.GetCurrentProcess();
+
+            Console.WriteLine("Elapsed {0} CPU {1} User {2} Priv {3}",
+                sw.Elapsed, process.TotalProcessorTime, process.UserProcessorTime, process.PrivilegedProcessorTime);
+            Console.WriteLine("Peak Memory: Virtual {0:F1}GiB Paged {1:F1}MiB Working {2:F1}MiB",
+                process.PeakVirtualMemorySize64.BytesToGiB(), process.PeakPagedMemorySize64.BytesToMiB(), process.PeakWorkingSet64.BytesToMiB());
         }
     }
 }

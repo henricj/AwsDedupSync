@@ -28,9 +28,9 @@ namespace AwsSyncer.Utility
 {
     public sealed class AsyncLock : IDisposable
     {
-        readonly object _lock = new object();
+        readonly object _lock = new();
         bool _isLocked;
-        Queue<TaskCompletionSource<IDisposable>> _pending = new Queue<TaskCompletionSource<IDisposable>>();
+        Queue<TaskCompletionSource<IDisposable>> _pending = new();
 
         #region IDisposable Members
 
@@ -121,7 +121,7 @@ namespace AwsSyncer.Utility
 
         async Task<IDisposable> CancellableTaskAsync(TaskCompletionSource<IDisposable> tcs, CancellationToken cancellationToken)
         {
-            using (cancellationToken.Register(
+            var registration = cancellationToken.Register(
                 () =>
                 {
                     bool wasPending;
@@ -135,10 +135,10 @@ namespace AwsSyncer.Utility
 
                     if (wasPending)
                         tcs.TrySetCanceled();
-                }))
-            {
+                });
+
+            await using (registration.ConfigureAwait(false))
                 return await tcs.Task.ConfigureAwait(false);
-            }
         }
 
         void Release()

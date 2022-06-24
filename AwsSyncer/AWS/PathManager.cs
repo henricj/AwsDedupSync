@@ -18,9 +18,9 @@
 // FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
-using System;
 using AwsSyncer.Types;
 using AwsSyncer.Utility;
+using System;
 
 namespace AwsSyncer.AWS
 {
@@ -99,10 +99,10 @@ namespace AwsSyncer.AWS
         {
             if (string.IsNullOrEmpty(blobPath))
                 throw new ArgumentNullException(nameof(blobPath));
-            if (!blobPath.StartsWith(BlobPrefix))
+            if (!blobPath.StartsWith(BlobPrefix, StringComparison.Ordinal))
                 throw new ArgumentException("path must start with " + BlobPrefix, nameof(blobPath));
 
-            var key = blobPath.Substring(BlobPrefix.Length);
+            var key = blobPath[BlobPrefix.Length..];
 
             if (string.IsNullOrEmpty(key))
                 return null;
@@ -133,10 +133,10 @@ namespace AwsSyncer.AWS
 
             var prefix = GetTreeNamePrefix(name);
 
-            if (!treeNamePath.StartsWith(prefix))
+            if (!treeNamePath.StartsWith(prefix, StringComparison.Ordinal))
                 throw new ArgumentException("path must start with " + prefix);
 
-            var key = treeNamePath.Substring(prefix.Length);
+            var key = treeNamePath[prefix.Length..];
 
             return key;
         }

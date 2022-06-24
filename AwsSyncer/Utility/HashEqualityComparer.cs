@@ -36,7 +36,7 @@ namespace AwsSyncer.Utility
             if (ReferenceEquals(x, y))
                 return true;
 
-            if (ReferenceEquals(x, null) || ReferenceEquals(null, y))
+            if (x is null || y is null)
                 return false;
 
             if (x.Length != y.Length)

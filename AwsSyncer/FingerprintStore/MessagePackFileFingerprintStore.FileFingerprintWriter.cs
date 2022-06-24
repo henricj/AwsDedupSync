@@ -18,15 +18,15 @@
 // FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
+using AwsSyncer.Types;
+using MessagePack;
 using System;
-using System.Diagnostics;
+using System.Buffers;
 using System.IO;
 using System.IO.Compression;
 using System.IO.Pipelines;
 using System.Threading;
 using System.Threading.Tasks;
-using AwsSyncer.Types;
-using MessagePack;
 
 namespace AwsSyncer.FingerprintStore
 {
@@ -34,10 +34,10 @@ namespace AwsSyncer.FingerprintStore
     {
         sealed class FileFingerprintWriter : IDisposable
         {
-            readonly Pipe _pipe = new Pipe();
+            readonly Pipe _pipe = new();
             Task _compressorTask;
-            byte[] _intBuffer;
             Stream _stream;
+            readonly ArrayBufferWriter<byte> _fingerprintWriter = new();
 
             public void Dispose()
             {
@@ -60,9 +60,13 @@ namespace AwsSyncer.FingerprintStore
 
                 try
                 {
-                    using (var outputBufferedStream = new BufferedStream(_stream, 128 * 1024))
-                    using (var deflate = new DeflateStream(outputBufferedStream, CompressionLevel.Optimal))
-                    using (var inputBufferedStream = new BufferedStream(deflate, 64 * 1024))
+                    var outputBufferedStream = new BufferedStream(_stream, 128 * 1024);
+                    var deflate = new DeflateStream(outputBufferedStream, CompressionLevel.Optimal);
+                    var inputBufferedStream = new BufferedStream(deflate, 64 * 1024);
+
+                    await using (outputBufferedStream.ConfigureAwait(false))
+                    await using (deflate.ConfigureAwait(false))
+                    await using (inputBufferedStream.ConfigureAwait(false))
                     {
                         for (; ; )
                         {
@@ -77,7 +81,8 @@ namespace AwsSyncer.FingerprintStore
 
                             reader.AdvanceTo(buffer.Start, buffer.End);
 
-                            if (readResult.IsCompleted) break;
+                            if (readResult.IsCompleted)
+                                break;
                         }
 
                         await inputBufferedStream.FlushAsync(cancellationToken).ConfigureAwait(false);
@@ -85,46 +90,38 @@ namespace AwsSyncer.FingerprintStore
                 }
                 finally
                 {
-                    reader.Complete();
+                    await reader.CompleteAsync().ConfigureAwait(false);
                 }
             }
 
-            public async Task CloseAsync(CancellationToken cancellationToken)
+            public async Task CloseAsync()
             {
-                _pipe.Writer.Complete();
+                await _pipe.Writer.CompleteAsync().ConfigureAwait(false);
 
-                var tcs = new TaskCompletionSource<bool>();
+                await _compressorTask.ConfigureAwait(false);
+            }
 
-                _pipe.Reader.OnWriterCompleted((e, o) =>
-                {
-                    if (null == e) tcs.TrySetResult(true);
-                    else tcs.TrySetException(e);
-                }, null);
+            static void IntSerializer(IBufferWriter<byte> bufferWriter, int value)
+            {
+                var writer = new MessagePackWriter(bufferWriter);
 
-                await Task.WhenAll(_compressorTask, tcs.Task).ConfigureAwait(false);
+                IntFormatter.Serialize(ref writer, value, MessagePackSerializerOptions.Standard);
             }
 
             public void Write(FileFingerprint fileFingerprint)
             {
                 var writer = _pipe.Writer;
 
-                var blob = MessagePackSerializer.SerializeUnsafe(fileFingerprint).AsSpan();
+                _fingerprintWriter.Clear();
+                MessagePackSerializer.Serialize(_fingerprintWriter, fileFingerprint);
 
-                var lengthBlob = IntFormatter.Serialize(ref _intBuffer, 0, blob.Length, MessagePackSerializer.DefaultResolver);
+                IntSerializer(writer, _fingerprintWriter.WrittenCount);
 
-                var outputLength = lengthBlob + blob.Length;
+                var output = writer.GetMemory(_fingerprintWriter.WrittenCount);
 
-                var output = writer.GetSpan(outputLength);
+                _fingerprintWriter.WrittenMemory.CopyTo(output);
 
-                Debug.Assert(output.Length >= outputLength);
-
-                _intBuffer.AsSpan(0, lengthBlob).CopyTo(output);
-
-                output = output.Slice(lengthBlob);
-
-                blob.CopyTo(output);
-
-                writer.Advance(outputLength);
+                writer.Advance(_fingerprintWriter.WrittenCount);
             }
 
             public async ValueTask FlushAsync(CancellationToken cancellationToken)

@@ -18,10 +18,10 @@
 // FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
+using AwsSyncer.AWS;
 using System;
 using System.Linq;
 using System.Runtime.Serialization;
-using AwsSyncer.AWS;
 
 namespace AwsSyncer.Types
 {
@@ -71,7 +71,7 @@ namespace AwsSyncer.Types
             if (ReferenceEquals(this, other))
                 return true;
 
-            if (ReferenceEquals(null, other))
+            if (other is null)
                 return false;
 
             return Size == other.Size
