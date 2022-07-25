@@ -23,6 +23,7 @@ using AwsSyncer.FileBlobs;
 using AwsSyncer.FingerprintStore;
 using AwsSyncer.Types;
 using AwsSyncer.Utility;
+using Microsoft.Extensions.Configuration;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -49,8 +50,13 @@ namespace AwsDedupSync
 
         public S3Settings S3Settings { get; } = new() { ActuallyWrite = false, UpdateLinks = false, UploadBlobs = false };
 
-        public async Task SyncPathsAsync(string bucket, IEnumerable<string> paths, Func<FileInfo, bool> filePredicate, CancellationToken cancellationToken)
+        public async Task SyncPathsAsync(IConfiguration config, IEnumerable<string> paths, Func<FileInfo, bool> filePredicate, CancellationToken cancellationToken)
         {
+            var bucket = config["Bucket"];
+
+            if (string.IsNullOrWhiteSpace(bucket))
+                throw new KeyNotFoundException("No bucket name found in the application settings");
+
             // BEWARE:  This could cause trouble if there are
             // any case-sensitive paths involved.
             var namedPaths = (from arg in paths
@@ -61,10 +67,10 @@ namespace AwsDedupSync
                 .Distinct()
                 .ToArray();
 
-            using var blobManager = new BlobManager(new FileFingerprintManager(new MessagePackFileFingerprintStore(), new StreamFingerprinter())) as IBlobManager;
+            using var blobManager = new BlobManager(new FileFingerprintManager(new MessagePackFileFingerprintStore(bucket), new StreamFingerprinter())) as IBlobManager;
             try
             {
-                using var awsManager = AwsManagerFactory.Create(bucket);
+                using var awsManager = AwsManagerFactory.Create(bucket, config);
                 var uniqueFingerprintBlock = new BufferBlock<Tuple<FileFingerprint, AnnotatedPath>>();
                 var linkBlock = new BufferBlock<Tuple<AnnotatedPath, FileFingerprint>>();
 

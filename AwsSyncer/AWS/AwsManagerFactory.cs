@@ -19,21 +19,25 @@
 // DEALINGS IN THE SOFTWARE.
 
 using Amazon.S3;
+using Microsoft.Extensions.Configuration;
 using System;
 
 namespace AwsSyncer.AWS
 {
     public static class AwsManagerFactory
     {
-        public static IAwsManager Create(string bucket)
+        public static IAwsManager Create(string bucket, IConfiguration awsConfig)
         {
-            var amazonS3 = new AmazonS3Client();
+            var region = Amazon.AWSConfigs.AWSRegion;
+
+            var options = awsConfig.GetAWSOptions();
+            var amazonS3 = options.CreateServiceClient<IAmazonS3>();
 
             var s3Url = amazonS3.Config.DetermineServiceURL();
 
             var pathManager = new PathManager(new Uri(s3Url, UriKind.Absolute), bucket);
 
-            return new AwsManager(amazonS3, pathManager);
+            return new AwsManager(awsConfig, amazonS3, pathManager);
         }
     }
 }

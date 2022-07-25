@@ -19,9 +19,8 @@
 // DEALINGS IN THE SOFTWARE.
 
 using AwsSyncer.Utility;
+using Microsoft.Extensions.Configuration;
 using System;
-using System.Collections.Generic;
-using System.Configuration;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
@@ -39,14 +38,16 @@ namespace AwsDedupSync
 
         static Func<CancellationToken, Task> CreateSyncRunner(string[] paths)
         {
-            var bucket = ConfigurationManager.AppSettings["Bucket"];
+            var builder = new ConfigurationBuilder()
+                .SetBasePath(Directory.GetCurrentDirectory())
+                .AddJsonFile("appsettings.json", false);
 
-            if (string.IsNullOrWhiteSpace(bucket))
-                throw new KeyNotFoundException("No bucket name found in the application settings");
+            var config = builder.Build();
 
             var syncer = new S3PathSyncer();
 
-            return ct => syncer.SyncPathsAsync(bucket, paths, fi => !ExcludeFiles.Contains(fi.Name, StringComparer.OrdinalIgnoreCase), ct);
+            return ct => syncer.SyncPathsAsync(config, paths,
+                fi => !ExcludeFiles.Contains(fi.Name, StringComparer.OrdinalIgnoreCase), ct);
         }
 
         static void Main(string[] args)
@@ -87,7 +88,8 @@ namespace AwsDedupSync
             Console.WriteLine("Elapsed {0} CPU {1} User {2} Priv {3}",
                 sw.Elapsed, process.TotalProcessorTime, process.UserProcessorTime, process.PrivilegedProcessorTime);
             Console.WriteLine("Peak Memory: Virtual {0:F1}GiB Paged {1:F1}MiB Working {2:F1}MiB",
-                process.PeakVirtualMemorySize64.BytesToGiB(), process.PeakPagedMemorySize64.BytesToMiB(), process.PeakWorkingSet64.BytesToMiB());
+                process.PeakVirtualMemorySize64.BytesToGiB(), process.PeakPagedMemorySize64.BytesToMiB(),
+                process.PeakWorkingSet64.BytesToMiB());
         }
     }
 }

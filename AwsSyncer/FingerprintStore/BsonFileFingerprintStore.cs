@@ -24,7 +24,6 @@ using Newtonsoft.Json;
 using Newtonsoft.Json.Bson;
 using System;
 using System.Collections.Generic;
-using System.Configuration;
 using System.Diagnostics;
 using System.IO;
 using System.IO.Compression;
@@ -35,8 +34,8 @@ namespace AwsSyncer.FingerprintStore
 {
     public sealed class BsonFileFingerprintStore : IFileFingerprintStore
     {
-        static readonly DirectoryInfo BsonDirectory = GetBsonDirectory();
         static readonly Dictionary<string, FileFingerprint> EmptyFileFingerprints = new();
+        readonly DirectoryInfo _bsonDirectory;
         readonly FileSequence _fileSequence;
         readonly AsyncLock _lock = new();
         Stream _bsonFile;
@@ -44,9 +43,10 @@ namespace AwsSyncer.FingerprintStore
         DeflateStream _encodeStream;
         BsonDataWriter _jsonWriter;
 
-        public BsonFileFingerprintStore()
+        public BsonFileFingerprintStore(string bucket)
         {
-            _fileSequence = new FileSequence(BsonDirectory);
+            _bsonDirectory = GetBsonDirectory(bucket);
+            _fileSequence = new FileSequence(_bsonDirectory);
         }
 
         public int UpdateCount { get; private set; }
@@ -120,24 +120,22 @@ namespace AwsSyncer.FingerprintStore
                 8192, FileOptions.SequentialScan | FileOptions.Asynchronous);
         }
 
-        static Stream OpenBsonFileForWrite(FileInfo fi)
+        Stream OpenBsonFileForWrite(FileInfo fi)
         {
-            if (!BsonDirectory.Exists)
-                BsonDirectory.Create();
+            if (!_bsonDirectory.Exists)
+                _bsonDirectory.Create();
 
             return new FileStream(fi.FullName, FileMode.CreateNew,
                 FileAccess.Write, FileShare.None,
                 8192, FileOptions.SequentialScan | FileOptions.Asynchronous);
         }
 
-        static DirectoryInfo GetBsonDirectory()
+        static DirectoryInfo GetBsonDirectory(string bucket)
         {
             var localApplicationData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData,
                 Environment.SpecialFolderOption.Create);
 
             var path = Path.Combine(localApplicationData, "AwsSyncer", "BsonPaths");
-
-            var bucket = ConfigurationManager.AppSettings["bucket"];
 
             if (!string.IsNullOrWhiteSpace(bucket))
                 path = Path.Combine(path, bucket);
@@ -378,7 +376,7 @@ namespace AwsSyncer.FingerprintStore
                 {
                     var tempFileName = Path.GetRandomFileName();
 
-                    tempFileName = Path.Combine(BsonDirectory.FullName, tempFileName);
+                    tempFileName = Path.Combine(_bsonDirectory.FullName, tempFileName);
 
                     tempFileInfo = new FileInfo(tempFileName);
                 } while (tempFileInfo.Exists);

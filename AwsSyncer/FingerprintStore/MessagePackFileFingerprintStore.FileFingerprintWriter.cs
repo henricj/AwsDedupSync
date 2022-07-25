@@ -112,16 +112,7 @@ namespace AwsSyncer.FingerprintStore
             {
                 var writer = _pipe.Writer;
 
-                _fingerprintWriter.Clear();
-                MessagePackSerializer.Serialize(_fingerprintWriter, fileFingerprint);
-
-                IntSerializer(writer, _fingerprintWriter.WrittenCount);
-
-                var output = writer.GetMemory(_fingerprintWriter.WrittenCount);
-
-                _fingerprintWriter.WrittenMemory.CopyTo(output);
-
-                writer.Advance(_fingerprintWriter.WrittenCount);
+                MessagePackSerializer.Serialize(writer, fileFingerprint);
             }
 
             public async ValueTask FlushAsync(CancellationToken cancellationToken)

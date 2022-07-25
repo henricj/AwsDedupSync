@@ -21,9 +21,9 @@
 using Amazon.S3;
 using AwsSyncer.Types;
 using AwsSyncer.Utility;
+using Microsoft.Extensions.Configuration;
 using System;
 using System.Collections.Generic;
-using System.Configuration;
 using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
@@ -47,25 +47,25 @@ namespace AwsSyncer.AWS
         readonly S3Blobs _s3Blobs;
         readonly S3Links _s3Links;
 
-        public AwsManager(IAmazonS3 amazonS3, IPathManager pathManager)
+        public AwsManager(IConfiguration config, IAmazonS3 amazonS3, IPathManager pathManager)
         {
             _amazonS3 = amazonS3 ?? throw new ArgumentNullException(nameof(amazonS3));
             _pathManager = pathManager ?? throw new ArgumentNullException(nameof(pathManager));
 
             var storageClass = S3StorageClass.Standard;
-            var storageClassString = ConfigurationManager.AppSettings["AwsStorageClass"];
+            var storageClassString = config["StorageClass"];
 
             if (!string.IsNullOrWhiteSpace(storageClassString))
                 storageClass = S3StorageClass.FindValue(storageClassString);
 
             var blobStorageClass = storageClass;
-            var blobStorageClassString = ConfigurationManager.AppSettings["AwsBlobStorageClass"];
+            var blobStorageClassString = config["BlobStorageClass"];
 
             if (!string.IsNullOrWhiteSpace(blobStorageClassString))
                 blobStorageClass = S3StorageClass.FindValue(blobStorageClassString);
 
             var linkStorageClass = storageClass;
-            var linkStorageClassString = ConfigurationManager.AppSettings["AwsLinkStorageClass"];
+            var linkStorageClassString = config["LinkStorageClass"];
 
             if (!string.IsNullOrWhiteSpace(linkStorageClassString))
                 linkStorageClass = S3StorageClass.FindValue(linkStorageClassString);

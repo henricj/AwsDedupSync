@@ -23,13 +23,10 @@ using AwsSyncer.Utility;
 using MessagePack;
 using MessagePack.Formatters;
 using System;
-using System.Buffers;
 using System.Collections.Generic;
-using System.Configuration;
 using System.Diagnostics;
 using System.IO;
 using System.IO.Compression;
-using System.IO.Pipelines;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -37,16 +34,17 @@ namespace AwsSyncer.FingerprintStore
 {
     public sealed partial class MessagePackFileFingerprintStore : IFileFingerprintStore
     {
-        static readonly DirectoryInfo MsgPackDirectory = GetMsgPackDirectory();
         static readonly Dictionary<string, FileFingerprint> EmptyFileFingerprints = new();
         static readonly IMessagePackFormatter<int> IntFormatter = MessagePackSerializer.DefaultOptions.Resolver.GetFormatter<int>();
         readonly FileSequence _fileSequence;
         readonly AsyncLock _lock = new();
+        readonly DirectoryInfo _msgPackDirectory;
         FileFingerprintWriter _writer;
 
-        public MessagePackFileFingerprintStore()
+        public MessagePackFileFingerprintStore(string bucket)
         {
-            _fileSequence = new FileSequence(MsgPackDirectory);
+            _msgPackDirectory = GetMsgPackDirectory(bucket);
+            _fileSequence = new FileSequence(_msgPackDirectory);
         }
 
         public int UpdateCount { get; private set; }
@@ -127,14 +125,12 @@ namespace AwsSyncer.FingerprintStore
                 8192, FileOptions.SequentialScan | FileOptions.Asynchronous);
         }
 
-        static DirectoryInfo GetMsgPackDirectory()
+        static DirectoryInfo GetMsgPackDirectory(string bucket)
         {
             var localApplicationData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData,
                 Environment.SpecialFolderOption.Create);
 
             var path = Path.Combine(localApplicationData, "AwsSyncer", "MsgPackPaths");
-
-            var bucket = ConfigurationManager.AppSettings["bucket"];
 
             if (!string.IsNullOrWhiteSpace(bucket))
                 path = Path.Combine(path, bucket);
@@ -204,36 +200,8 @@ namespace AwsSyncer.FingerprintStore
 
                     cancellationToken.ThrowIfCancellationRequested();
 
-                    var pl = new Pipe();
-
-                    var writer = pl.Writer;
-
-
-                    void CopyToWriter(int length, byte[] buffer)
+                    // Scope
                     {
-                        var input = buffer.AsSpan(0, length);
-
-                        while (input.Length > 0)
-                        {
-                            var output = writer.GetSpan(length);
-
-                            if (output.Length <= 0)
-                                throw new InvalidOperationException("Unexpected non-positive span length: " + output.Length);
-
-                            var copySize = Math.Min(input.Length, output.Length);
-
-                            input[..copySize].CopyTo(output);
-
-                            input = input[copySize..];
-
-                            writer.Advance(copySize);
-                        }
-                    }
-
-                    var decompressTask = Task.Run(async () =>
-                    {
-                        var buffer = ArrayPool<byte>.Shared.Rent(64 * 1024);
-
                         var fileStream = OpenMsgPackFileForRead(fileInfo);
                         var decodeStream = new DeflateStream(fileStream, CompressionMode.Decompress);
 
@@ -242,18 +210,23 @@ namespace AwsSyncer.FingerprintStore
                         {
                             try
                             {
-                                for (; ; )
+                                using (var streamReader = new MessagePackStreamReader(decodeStream, true))
                                 {
-                                    var read = await decodeStream.ReadAsync(buffer, cancellationToken).ConfigureAwait(false);
+                                    while (await streamReader.ReadAsync(cancellationToken) is { } message)
+                                    {
+                                        totalSize += message.Length;
 
-                                    if (read < 1)
-                                        break;
+                                        var fileFingerprint =
+                                            MessagePackSerializer.Deserialize<FileFingerprint>(message,
+                                                cancellationToken: cancellationToken);
 
-                                    totalSize += read;
+                                        if (blobs.ContainsKey(fileFingerprint.FullFilePath))
+                                            Debug.WriteLine($"Collision for {fileFingerprint.FullFilePath}");
 
-                                    CopyToWriter(read, buffer);
+                                        blobs[fileFingerprint.FullFilePath] = fileFingerprint;
 
-                                    await writer.FlushAsync(cancellationToken).ConfigureAwait(false);
+                                        ++blobCount;
+                                    }
                                 }
 
                                 compressedSize += fileStream.Length;
@@ -266,120 +239,8 @@ namespace AwsSyncer.FingerprintStore
                                 Debug.WriteLine("MessagePackFileFingerprintStore.LoadBlobsImplAsync() read failed: " +
                                                 ex.Message);
                             }
-                            finally
-                            {
-                                ArrayPool<byte>.Shared.Return(buffer);
-
-                                await writer.CompleteAsync().ConfigureAwait(false);
-                            }
                         }
-                    }, cancellationToken);
-
-                    var reader = pl.Reader;
-
-                    var deserializeTask = Task.Run(async () =>
-                    {
-                        var workBuffer = ArrayPool<byte>.Shared.Rent(64 * 1024);
-
-                        bool ReadInteger(out int integer, out long consumed)
-                        {
-                            var messagePackReader = new MessagePackReader(workBuffer);
-
-                            integer = IntFormatter.Deserialize(ref messagePackReader, MessagePackSerializer.DefaultOptions);
-
-                            consumed = messagePackReader.Consumed;
-
-                            if (integer == 0)
-                                return true;
-
-                            if (integer < 0 || integer > workBuffer.Length)
-                                throw new FileFormatException($"Invalid block length {integer}");
-
-                            return false;
-                        }
-
-                        T Deserialize<T>(ReadOnlySequence<byte> buffer, out long readSize)
-                        {
-                            var options = MessagePackSerializerOptions.Standard
-                                .WithSecurity(MessagePackSecurity.UntrustedData);
-
-                            var messagePackReader = new MessagePackReader(buffer);
-
-                            var obj = MessagePackSerializer.Deserialize<T>(ref messagePackReader, options);
-
-                            readSize = messagePackReader.Consumed;
-
-                            return obj;
-                        }
-
-                        try
-                        {
-                            for (; ; )
-                            {
-                                if (!reader.TryRead(out var input))
-                                    input = await reader.ReadAsync(cancellationToken).ConfigureAwait(false);
-
-                                var buffer = input.Buffer;
-
-                                while (buffer.Length > 32)
-                                {
-                                    // We now have enough data to start reading.
-
-                                    buffer.Slice(0, 5).CopyTo(workBuffer.AsSpan());
-
-                                    if (ReadInteger(out var length, out var consumed))
-                                        return; // EOF
-
-                                    var actualSize = consumed;
-
-                                    buffer = buffer.Slice(actualSize);
-
-                                    while (buffer.Length < length)
-                                    {
-                                        if (input.IsCompleted)
-                                            return;
-
-                                        reader.AdvanceTo(buffer.Start, buffer.End);
-
-                                        if (!reader.TryRead(out input))
-                                            input = await reader.ReadAsync(cancellationToken).ConfigureAwait(false);
-
-                                        buffer = input.Buffer;
-                                    }
-
-                                    // We now have enough data to decode the block.
-
-                                    buffer.Slice(0, length).CopyTo(workBuffer.AsSpan());
-
-                                    var fileFingerprint = Deserialize<FileFingerprint>(buffer.Slice(0, length), out actualSize);
-
-                                    buffer = buffer.Slice(length);
-
-                                    if (length != actualSize)
-                                        throw new FileFormatException($"Block length mismatch {length} != {actualSize}");
-
-                                    if (blobs.ContainsKey(fileFingerprint.FullFilePath))
-                                        Debug.WriteLine($"Collision for {fileFingerprint.FullFilePath}");
-
-                                    blobs[fileFingerprint.FullFilePath] = fileFingerprint;
-
-                                    ++blobCount;
-                                }
-
-                                reader.AdvanceTo(buffer.Start, buffer.End);
-
-                                if (input.IsCompleted)
-                                    break;
-                            }
-                        }
-                        finally
-                        {
-                            ArrayPool<byte>.Shared.Return(workBuffer);
-                            await reader.CompleteAsync();
-                        }
-                    }, cancellationToken);
-
-                    await Task.WhenAll(decompressTask, deserializeTask).ConfigureAwait(false);
+                    }
                 }
                 catch (IOException)
                 {
@@ -431,7 +292,7 @@ namespace AwsSyncer.FingerprintStore
                     {
                         var tempFileName = Path.GetRandomFileName();
 
-                        tempFileName = Path.Combine(MsgPackDirectory.FullName, tempFileName);
+                        tempFileName = Path.Combine(_msgPackDirectory.FullName, tempFileName);
 
                         tempFileInfo = new FileInfo(tempFileName);
                     } while (tempFileInfo.Exists);
