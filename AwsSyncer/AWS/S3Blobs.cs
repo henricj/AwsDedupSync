@@ -140,6 +140,8 @@ namespace AwsSyncer.AWS
 
             var md5Digest = Convert.ToBase64String(fingerprint.Md5);
 
+            var base64Sha256 = Convert.ToBase64String(fingerprint.Sha2_256);
+
             var request = new PutObjectRequest
             {
                 BucketName = _pathManager.Bucket,
@@ -149,16 +151,16 @@ namespace AwsSyncer.AWS
                 {
                     ContentType = MimeDetector.GetMimeType(fullFilePath),
                     ContentLength = fingerprint.Size,
-                    ContentMD5 = md5Digest
+                    ContentMD5 = md5Digest,
+                    ["x-amz-meta-lastModified"] = tuple.Item1.LastModifiedUtc.ToString("O"),
+                    ["x-amz-meta-SHA2-256"] = base64Sha256,
+                    ["x-amz-meta-SHA3-512"] = Convert.ToBase64String(fingerprint.Sha3_512)
                 },
                 StorageClass = _s3StorageClass,
                 AutoCloseStream = false,
-                AutoResetStreamPosition = false
+                AutoResetStreamPosition = false,
+                ChecksumSHA256 = base64Sha256
             };
-
-            request.Headers["x-amz-meta-lastModified"] = tuple.Item1.LastModifiedUtc.ToString("O");
-            request.Headers["x-amz-meta-SHA2-256"] = Convert.ToBase64String(fingerprint.Sha2_256);
-            request.Headers["x-amz-meta-SHA3-512"] = Convert.ToBase64String(fingerprint.Sha3_512);
 
             if (!string.IsNullOrEmpty(tuple.Item2.Collection))
                 request.Headers["x-amz-meta-original-collection"] = tuple.Item2.Collection;
