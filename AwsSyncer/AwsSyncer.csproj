@@ -28,6 +28,7 @@
     <Compile Include="Types\FileFingerprint.cs" />
     <Compile Include="FileBlobs\FileFingerprintManager.cs" />
     <Compile Include="FingerprintStore\FileSequence.cs" />
+    <Compile Include="Utility\ByteArrayComparer.cs" />
     <Compile Include="Utility\HashEqualityComparer.cs" />
     <Compile Include="LinkFingerprintJoiner.cs" />
     <Compile Include="LinkManager.cs" />
