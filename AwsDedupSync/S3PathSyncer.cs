@@ -57,6 +57,8 @@ namespace AwsDedupSync
             if (string.IsNullOrWhiteSpace(bucket))
                 throw new KeyNotFoundException("No bucket name found in the application settings");
 
+            Console.WriteLine($"Targeting bucket {bucket}");
+
             // BEWARE:  This could cause trouble if there are
             // any case-sensitive paths involved.
             var namedPaths = (from arg in paths
