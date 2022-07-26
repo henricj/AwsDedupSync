@@ -153,8 +153,8 @@ namespace AwsSyncer.AWS
                     ContentLength = fingerprint.Size,
                     ContentMD5 = md5Digest,
                     ["x-amz-meta-lastModified"] = tuple.Item1.LastModifiedUtc.ToString("O"),
-                    ["x-amz-meta-SHA2-256"] = base64Sha256,
-                    ["x-amz-meta-SHA3-512"] = Convert.ToBase64String(fingerprint.Sha3_512)
+                    ["x-amz-meta-sha2-256"] = base64Sha256,
+                    ["x-amz-meta-sha3-512"] = Convert.ToBase64String(fingerprint.Sha3_512)
                 },
                 StorageClass = _s3StorageClass,
                 AutoCloseStream = false,
