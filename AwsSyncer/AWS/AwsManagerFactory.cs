@@ -28,8 +28,6 @@ namespace AwsSyncer.AWS
     {
         public static IAwsManager Create(string bucket, IConfiguration awsConfig)
         {
-            var region = Amazon.AWSConfigs.AWSRegion;
-
             var options = awsConfig.GetAWSOptions();
             var amazonS3 = options.CreateServiceClient<IAmazonS3>();
 
