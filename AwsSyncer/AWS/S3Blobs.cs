@@ -34,6 +34,7 @@ namespace AwsSyncer.AWS
 {
     public sealed class S3Blobs : S3PutBase
     {
+        const int KeyLength = 512 / 8;
         readonly IPathManager _pathManager;
         readonly S3StorageClass _s3StorageClass;
 
@@ -85,6 +86,38 @@ namespace AwsSyncer.AWS
                     {
                         Interlocked.Increment(ref statistics.Count);
                         Interlocked.Add(ref statistics.TotalSize, s3Object.Size);
+                    }
+
+                    if (key.Length != KeyLength)
+                    {
+                        // Compensate for past trouble...
+                        if (KeyLength + 1 == key.Length && 13 == key[KeyLength])
+                        {
+                            Console.WriteLine($"Object key {s3Object.Key} has trailing carriage return.");
+
+                            var newKey = key[..KeyLength].ToArray();
+
+                            key = newKey;
+                        }
+                        else
+                        {
+                            var metadata = await AmazonS3
+                                .GetObjectMetadataAsync(_pathManager.Bucket, s3Object.Key, cancellationToken).ConfigureAwait(false);
+
+                            var alternateKeyHeader = metadata.Metadata["x-amz-meta-sha3-512"];
+
+                            if (string.IsNullOrWhiteSpace(alternateKeyHeader))
+                            {
+                                Console.WriteLine($"Invalid key for object {s3Object.Key}");
+                                continue;
+                            }
+
+                            PathUtil.RequireNormalizedAsciiName(alternateKeyHeader);
+
+                            var newKey = S3Util.DecodeKey(alternateKeyHeader);
+
+                            key = newKey;
+                        }
                     }
 
                     keys[key] = s3Object.ETag;
