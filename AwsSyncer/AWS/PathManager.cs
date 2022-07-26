@@ -32,7 +32,7 @@ namespace AwsSyncer.AWS
         string TreePrefix { get; }
 
         string GetBlobPath(FileFingerprint fileFingerprint);
-        string GetKeyFromBlobPath(string blobPath);
+        byte[] GetKeyFromBlobPath(string blobPath);
 
         string GetTreeNamePrefix(string name);
         string GetTreeNamePath(string name, string key);
@@ -95,7 +95,7 @@ namespace AwsSyncer.AWS
             return BlobPrefix + fileFingerprint.Fingerprint.Key();
         }
 
-        public string GetKeyFromBlobPath(string blobPath)
+        public byte[] GetKeyFromBlobPath(string blobPath)
         {
             if (string.IsNullOrEmpty(blobPath))
                 throw new ArgumentNullException(nameof(blobPath));
@@ -109,7 +109,7 @@ namespace AwsSyncer.AWS
 
             PathUtil.RequireNormalizedAsciiName(key);
 
-            return key;
+            return S3Util.DecodeKey(key);
         }
 
         public string GetTreeNamePrefix(string name)

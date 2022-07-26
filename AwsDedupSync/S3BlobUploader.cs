@@ -41,7 +41,7 @@ namespace AwsDedupSync
 
         public Task UploadBlobsAsync(IAwsManager awsManager,
             ISourceBlock<Tuple<FileFingerprint, AnnotatedPath>> uniqueBlobBlock,
-            IReadOnlyDictionary<string, string> knowObjects,
+            IReadOnlyDictionary<byte[], string> knowObjects,
             CancellationToken cancellationToken)
         {
             var blobCount = 0;
@@ -50,7 +50,7 @@ namespace AwsDedupSync
             var builderBlock = new TransformBlock<Tuple<FileFingerprint, AnnotatedPath>, S3Blobs.IUploadBlobRequest>(
                 tuple =>
                 {
-                    var exists = knowObjects.TryGetValue(tuple.Item1.Fingerprint.Key(), out var etag);
+                    var exists = knowObjects.TryGetValue(tuple.Item1.Fingerprint.Sha3_512, out var etag);
 
                     //Debug.WriteLine($"{tuple.Item1.FullFilePath} {(exists ? "already exists" : "scheduled for upload")}");
 

@@ -44,7 +44,7 @@ namespace AwsSyncer.AWS
             _s3StorageClass = s3StorageClass ?? throw new ArgumentNullException(nameof(s3StorageClass));
         }
 
-        public async Task<IReadOnlyDictionary<string, string>> ListAsync(Statistics statistics, CancellationToken cancellationToken)
+        public async Task<IReadOnlyDictionary<byte[], string>> ListAsync(Statistics statistics, CancellationToken cancellationToken)
         {
             if (null == S3Util.KeyAlphabet)
                 return await ListAsync(_pathManager.BlobPrefix, statistics, cancellationToken).ConfigureAwait(false);
@@ -55,12 +55,12 @@ namespace AwsSyncer.AWS
 
             await Task.WhenAll(tasks).ConfigureAwait(false);
 
-            return tasks.SelectMany(t => t.Result).ToDictionary(kv => kv.Key, kv => kv.Value);
+            return tasks.SelectMany(t => t.Result).ToDictionary(kv => kv.Key, kv => kv.Value, ByteArrayComparer.Instance);
         }
 
-        async Task<Dictionary<string, string>> ListAsync(string prefix, Statistics statistics, CancellationToken cancellationToken)
+        async Task<Dictionary<byte[], string>> ListAsync(string prefix, Statistics statistics, CancellationToken cancellationToken)
         {
-            var keys = new Dictionary<string, string>();
+            var keys = new Dictionary<byte[], string>(ByteArrayComparer.Instance);
 
             var request = new ListObjectsV2Request
             {
