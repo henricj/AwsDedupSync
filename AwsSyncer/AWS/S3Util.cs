@@ -66,5 +66,10 @@ namespace AwsSyncer.AWS
         {
             return Base64UrlTextEncoder.Encode(value);
         }
+
+        public static byte[] DecodeKey(string value)
+        {
+            return Base64UrlTextEncoder.Decode(value);
+        }
     }
 }
