@@ -62,7 +62,7 @@ namespace AwsSyncer.AWS
         {
             var keys = new Dictionary<string, string>();
 
-            var request = new ListObjectsRequest
+            var request = new ListObjectsV2Request
             {
                 BucketName = _pathManager.Bucket,
                 Prefix = prefix,
@@ -71,7 +71,7 @@ namespace AwsSyncer.AWS
 
             for (; ; )
             {
-                var response = await AmazonS3.ListObjectsAsync(request, cancellationToken).ConfigureAwait(false);
+                var response = await AmazonS3.ListObjectsV2Async(request, cancellationToken).ConfigureAwait(false);
 
                 foreach (var s3Object in response.S3Objects)
                 {
@@ -93,7 +93,7 @@ namespace AwsSyncer.AWS
                 if (!response.IsTruncated)
                     return keys;
 
-                request.Marker = response.NextMarker;
+                request.ContinuationToken = response.NextContinuationToken;
             }
         }
 
