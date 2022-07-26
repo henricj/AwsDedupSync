@@ -18,8 +18,6 @@
 // FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
-using AwsSyncer.Types;
-using MessagePack;
 using System;
 using System.Buffers;
 using System.IO;
@@ -27,6 +25,8 @@ using System.IO.Compression;
 using System.IO.Pipelines;
 using System.Threading;
 using System.Threading.Tasks;
+using AwsSyncer.Types;
+using MessagePack;
 
 namespace AwsSyncer.FingerprintStore
 {
@@ -34,10 +34,10 @@ namespace AwsSyncer.FingerprintStore
     {
         sealed class FileFingerprintWriter : IDisposable
         {
+            readonly ArrayBufferWriter<byte> _fingerprintWriter = new();
             readonly Pipe _pipe = new();
             Task _compressorTask;
             Stream _stream;
-            readonly ArrayBufferWriter<byte> _fingerprintWriter = new();
 
             public void Dispose()
             {
@@ -46,7 +46,8 @@ namespace AwsSyncer.FingerprintStore
 
             public void Open(FileInfo fi)
             {
-                if (null != _stream) throw new InvalidOperationException("The writer is already open");
+                if (null != _stream)
+                    throw new InvalidOperationException("The writer is already open");
 
                 _stream = OpenMsgPackFileForWrite(fi);
 
@@ -68,7 +69,7 @@ namespace AwsSyncer.FingerprintStore
                     await using (deflate.ConfigureAwait(false))
                     await using (inputBufferedStream.ConfigureAwait(false))
                     {
-                        for (; ; )
+                        for (;;)
                         {
                             if (!reader.TryRead(out var readResult))
                                 readResult = await reader.ReadAsync(cancellationToken).ConfigureAwait(false);

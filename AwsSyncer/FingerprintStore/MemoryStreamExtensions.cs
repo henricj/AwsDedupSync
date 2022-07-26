@@ -27,7 +27,8 @@ namespace AwsSyncer.FingerprintStore
 {
     public static class MemoryStreamExtensions
     {
-        public static async ValueTask WriteAsync(this Stream stream, ReadOnlySequence<byte> readOnlySequence, CancellationToken cancellationToken)
+        public static async ValueTask WriteAsync(this Stream stream, ReadOnlySequence<byte> readOnlySequence,
+            CancellationToken cancellationToken)
         {
             foreach (var readOnlyMemory in readOnlySequence)
                 await stream.WriteAsync(readOnlyMemory, cancellationToken).ConfigureAwait(false);

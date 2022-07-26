@@ -18,10 +18,10 @@
 // FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
-using Microsoft.AspNetCore.WebUtilities;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Microsoft.AspNetCore.WebUtilities;
 
 namespace AwsSyncer.AWS
 {
@@ -34,10 +34,8 @@ namespace AwsSyncer.AWS
 
         public static IReadOnlyCollection<char> KeyAlphabet { get; }
 
-        public static string ComputeS3Etag(byte[] md5Digest)
-        {
-            return '"' + BitConverter.ToString(md5Digest).Replace("-", string.Empty) + '"';
-        }
+        public static string ComputeS3Etag(byte[] md5Digest) =>
+            '"' + BitConverter.ToString(md5Digest).Replace("-", string.Empty) + '"';
 
         static char[] DiscoverAlphabet()
         {
@@ -62,14 +60,8 @@ namespace AwsSyncer.AWS
             return alphabet.OrderBy(c => c).ToArray();
         }
 
-        public static string S3EncodeKey(byte[] value)
-        {
-            return Base64UrlTextEncoder.Encode(value);
-        }
+        public static string S3EncodeKey(byte[] value) => Base64UrlTextEncoder.Encode(value);
 
-        public static byte[] DecodeKey(string value)
-        {
-            return Base64UrlTextEncoder.Decode(value);
-        }
+        public static byte[] DecodeKey(string value) => Base64UrlTextEncoder.Decode(value);
     }
 }

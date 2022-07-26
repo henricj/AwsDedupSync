@@ -18,8 +18,8 @@
 // FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
-using Newtonsoft.Json;
 using System;
+using Newtonsoft.Json;
 
 namespace AwsSyncer.Utility
 {
@@ -56,9 +56,6 @@ namespace AwsSyncer.Utility
             return DateTime.FromBinary(binary);
         }
 
-        public override bool CanConvert(Type objectType)
-        {
-            return typeof(DateTime) == objectType;
-        }
+        public override bool CanConvert(Type objectType) => typeof(DateTime) == objectType;
     }
 }

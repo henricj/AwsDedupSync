@@ -18,15 +18,14 @@
 // FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
-using AwsSyncer.AWS;
-using AwsSyncer.Types;
-using AwsSyncer.Utility;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Threading.Tasks.Dataflow;
+using AwsSyncer.AWS;
+using AwsSyncer.Types;
 
 namespace AwsDedupSync
 {
@@ -60,7 +59,8 @@ namespace AwsDedupSync
                         // of the individual parts.
                         if (etag.Contains('-'))
                         {
-                            Debug.WriteLine($"{tuple.Item1.FullFilePath} is a multi-part upload with ETag {etag} {tuple.Item1.Fingerprint.Key()[..12]}");
+                            Debug.WriteLine(
+                                $"{tuple.Item1.FullFilePath} is a multi-part upload with ETag {etag} {tuple.Item1.Fingerprint.Key()[..12]}");
 
                             return null;
                         }
@@ -70,7 +70,8 @@ namespace AwsDedupSync
                         if (string.Equals(expectedETag, etag, StringComparison.OrdinalIgnoreCase))
                             return null;
 
-                        Console.WriteLine($"ERROR: {tuple.Item1.FullFilePath} tag mismatch {etag}, expected {expectedETag} {tuple.Item1.Fingerprint.Key()[..12]}");
+                        Console.WriteLine(
+                            $"ERROR: {tuple.Item1.FullFilePath} tag mismatch {etag}, expected {expectedETag} {tuple.Item1.Fingerprint.Key()[..12]}");
                     }
 
                     var request = awsManager.BuildUploadBlobRequest(tuple);
@@ -84,7 +85,8 @@ namespace AwsDedupSync
 
                     return request;
                 },
-                new ExecutionDataflowBlockOptions { CancellationToken = cancellationToken, MaxDegreeOfParallelism = Environment.ProcessorCount });
+                new ExecutionDataflowBlockOptions
+                    { CancellationToken = cancellationToken, MaxDegreeOfParallelism = Environment.ProcessorCount });
 
             var uploader = new ActionBlock<S3Blobs.IUploadBlobRequest>(
                 blob => UploadBlobAsync(awsManager, blob, cancellationToken),
@@ -113,7 +115,8 @@ namespace AwsDedupSync
             return Task.WhenAll(tasks);
         }
 
-        async Task UploadBlobAsync(IAwsManager awsManager, S3Blobs.IUploadBlobRequest uploadBlobRequest, CancellationToken cancellationToken)
+        async Task UploadBlobAsync(IAwsManager awsManager, S3Blobs.IUploadBlobRequest uploadBlobRequest,
+            CancellationToken cancellationToken)
         {
             if (null == uploadBlobRequest)
                 return;

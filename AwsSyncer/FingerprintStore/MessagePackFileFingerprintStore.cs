@@ -18,10 +18,6 @@
 // FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
-using AwsSyncer.Types;
-using AwsSyncer.Utility;
-using MessagePack;
-using MessagePack.Formatters;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -29,6 +25,10 @@ using System.IO;
 using System.IO.Compression;
 using System.Threading;
 using System.Threading.Tasks;
+using AwsSyncer.Types;
+using AwsSyncer.Utility;
+using MessagePack;
+using MessagePack.Formatters;
 
 namespace AwsSyncer.FingerprintStore
 {

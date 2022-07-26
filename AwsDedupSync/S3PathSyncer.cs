@@ -18,12 +18,6 @@
 // FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
-using AwsSyncer.AWS;
-using AwsSyncer.FileBlobs;
-using AwsSyncer.FingerprintStore;
-using AwsSyncer.Types;
-using AwsSyncer.Utility;
-using Microsoft.Extensions.Configuration;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -31,6 +25,12 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Threading.Tasks.Dataflow;
+using AwsSyncer.AWS;
+using AwsSyncer.FileBlobs;
+using AwsSyncer.FingerprintStore;
+using AwsSyncer.Types;
+using AwsSyncer.Utility;
+using Microsoft.Extensions.Configuration;
 
 namespace AwsDedupSync
 {
@@ -50,7 +50,8 @@ namespace AwsDedupSync
 
         public S3Settings S3Settings { get; } = new() { ActuallyWrite = false, UpdateLinks = false, UploadBlobs = false };
 
-        public async Task SyncPathsAsync(IConfiguration config, IEnumerable<string> paths, Func<FileInfo, bool> filePredicate, CancellationToken cancellationToken)
+        public async Task SyncPathsAsync(IConfiguration config, IEnumerable<string> paths, Func<FileInfo, bool> filePredicate,
+            CancellationToken cancellationToken)
         {
             var bucket = config["Bucket"];
 
@@ -62,14 +63,16 @@ namespace AwsDedupSync
             // BEWARE:  This could cause trouble if there are
             // any case-sensitive paths involved.
             var namedPaths = (from arg in paths
-                              let split = arg.IndexOf('=')
-                              let validSplit = split > 0 && split < arg.Length - 1
-                              select new CollectionPath(validSplit ? arg[..split] : null,
-                                  PathUtil.ForceTrailingSlash(Path.GetFullPath(validSplit ? arg[(split + 1)..] : arg))))
+                    let split = arg.IndexOf('=')
+                    let validSplit = split > 0 && split < arg.Length - 1
+                    select new CollectionPath(validSplit ? arg[..split] : null,
+                        PathUtil.ForceTrailingSlash(Path.GetFullPath(validSplit ? arg[(split + 1)..] : arg))))
                 .Distinct()
                 .ToArray();
 
-            using var blobManager = new BlobManager(new FileFingerprintManager(new MessagePackFileFingerprintStore(bucket), new StreamFingerprinter())) as IBlobManager;
+            using var blobManager =
+                new BlobManager(new FileFingerprintManager(new MessagePackFileFingerprintStore(bucket), new StreamFingerprinter()))
+                    as IBlobManager;
             try
             {
                 using var awsManager = AwsManagerFactory.Create(bucket, config);
@@ -120,7 +123,8 @@ namespace AwsDedupSync
                     if (S3Settings.UploadBlobs)
                     {
                         // ReSharper disable once AccessToDisposedClosure
-                        uploadBlobsTask = _s3BlobUploader.UploadBlobsAsync(awsManager, uniqueFingerprintBlock, knownObjects, cancellationToken);
+                        uploadBlobsTask = _s3BlobUploader.UploadBlobsAsync(awsManager, uniqueFingerprintBlock, knownObjects,
+                            cancellationToken);
                     }
                 }, cancellationToken);
 
@@ -139,7 +143,7 @@ namespace AwsDedupSync
 
         static async Task WaitAllWithWake(ICollection<Task> tasks)
         {
-            for (; ; )
+            for (;;)
             {
                 var pendingTasks = tasks.Where(t => !t.IsCompleted).ToArray();
 

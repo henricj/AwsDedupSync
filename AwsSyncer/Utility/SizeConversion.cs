@@ -25,14 +25,8 @@ namespace AwsSyncer.Utility
         const double ToGiB = 1.0 / (1024 * 1024 * 1024);
         const double ToMiB = 1.0 / (1024 * 1024);
 
-        public static double BytesToGiB(this long value)
-        {
-            return value * ToGiB;
-        }
+        public static double BytesToGiB(this long value) => value * ToGiB;
 
-        public static double BytesToMiB(this long value)
-        {
-            return value * ToMiB;
-        }
+        public static double BytesToMiB(this long value) => value * ToMiB;
     }
 }

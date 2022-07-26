@@ -106,7 +106,8 @@ namespace AwsSyncer.Utility
 
                 if (null != ex)
                 {
-                    Debug.WriteLine("TaskCollector.Cleanup() task {0} failed: {1}{2}{3}", description, ex, Environment.NewLine, ex.StackTrace);
+                    Debug.WriteLine("TaskCollector.Cleanup() task {0} failed: {1}{2}{3}", description, ex, Environment.NewLine,
+                        ex.StackTrace);
 
                     if (Debugger.IsAttached)
                         Debugger.Break();

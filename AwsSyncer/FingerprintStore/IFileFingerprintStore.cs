@@ -1,8 +1,8 @@
-using AwsSyncer.Types;
 using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
+using AwsSyncer.Types;
 
 namespace AwsSyncer.FingerprintStore
 {

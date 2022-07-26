@@ -18,14 +18,14 @@
 // FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
-using AwsSyncer;
-using AwsSyncer.AWS;
-using AwsSyncer.Types;
 using System;
 using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Threading.Tasks.Dataflow;
+using AwsSyncer;
+using AwsSyncer.AWS;
+using AwsSyncer.Types;
 
 namespace AwsDedupSync
 {
@@ -46,7 +46,8 @@ namespace AwsDedupSync
         {
             try
             {
-                await LinkManager.CreateLinksAsync(awsManager, linkBlobs, _s3Settings.ActuallyWrite, cancellationToken).ConfigureAwait(false);
+                await LinkManager.CreateLinksAsync(awsManager, linkBlobs, _s3Settings.ActuallyWrite, cancellationToken)
+                    .ConfigureAwait(false);
 
                 Debug.WriteLine("Done processing links");
             }

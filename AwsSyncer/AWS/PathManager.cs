@@ -18,9 +18,9 @@
 // FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
+using System;
 using AwsSyncer.Types;
 using AwsSyncer.Utility;
-using System;
 
 namespace AwsSyncer.AWS
 {
@@ -90,10 +90,7 @@ namespace AwsSyncer.AWS
         public string Bucket { get; }
         public Uri AwsS3Url { get; }
 
-        public string GetBlobPath(FileFingerprint fileFingerprint)
-        {
-            return BlobPrefix + fileFingerprint.Fingerprint.Key();
-        }
+        public string GetBlobPath(FileFingerprint fileFingerprint) => BlobPrefix + fileFingerprint.Fingerprint.Key();
 
         public byte[] GetKeyFromBlobPath(string blobPath)
         {
@@ -119,10 +116,7 @@ namespace AwsSyncer.AWS
             return TreePrefix + name + '/';
         }
 
-        public string GetTreeNamePath(string name, string key)
-        {
-            return GetTreeNamePrefix(name) + key;
-        }
+        public string GetTreeNamePath(string name, string key) => GetTreeNamePrefix(name) + key;
 
         public string GetKeyFromTreeNamePath(string name, string treeNamePath)
         {

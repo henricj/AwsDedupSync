@@ -68,7 +68,7 @@ namespace AwsSyncer.Utility
         [Conditional("DEBUG")]
         void CheckInvariant()
         {
-            Debug.Assert(_isLocked || null != _pending && 0 == _pending.Count,
+            Debug.Assert(_isLocked || (null != _pending && 0 == _pending.Count),
                 "Either we are locked or we have an empty queue");
         }
 
@@ -138,12 +138,14 @@ namespace AwsSyncer.Utility
                 });
 
             await using (registration.ConfigureAwait(false))
+            {
                 return await tcs.Task.ConfigureAwait(false);
+            }
         }
 
         void Release()
         {
-            for (; ; )
+            for (;;)
             {
                 TaskCompletionSource<IDisposable> tcs;
 

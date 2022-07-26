@@ -45,10 +45,11 @@ ref struct AlignedAutoPtr
         if (nullptr != m_ptr)
             return;
 
-        auto p = reinterpret_cast<T *>(_aligned_malloc(sizeof(T), __alignof(T)));
+        auto p = reinterpret_cast<T*>(_aligned_malloc(sizeof(T), __alignof(T)));
 
         m_ptr = p;
     }
+
 private:
     void Reset(T* ptr)
     {

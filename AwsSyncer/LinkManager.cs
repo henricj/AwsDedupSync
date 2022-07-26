@@ -18,14 +18,14 @@
 // FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
-using AwsSyncer.AWS;
-using AwsSyncer.Types;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Threading.Tasks.Dataflow;
+using AwsSyncer.AWS;
+using AwsSyncer.Types;
 
 namespace AwsSyncer
 {
@@ -116,7 +116,8 @@ namespace AwsSyncer
 
                     return awsManager.BuildLinkRequest(collection, relativePath, file, eTag);
                 },
-                new ExecutionDataflowBlockOptions { CancellationToken = cancellationToken, MaxDegreeOfParallelism = Environment.ProcessorCount });
+                new ExecutionDataflowBlockOptions
+                    { CancellationToken = cancellationToken, MaxDegreeOfParallelism = Environment.ProcessorCount });
 
             makeLinkBlock.LinkTo(createLinkBlock, new DataflowLinkOptions { PropagateCompletion = true }, link => null != link);
             makeLinkBlock.LinkTo(DataflowBlock.NullTarget<S3Links.ICreateLinkRequest>());
@@ -128,7 +129,8 @@ namespace AwsSyncer
             Debug.WriteLine($"Link handler for {collection} is done");
         }
 
-        static async Task CreateLinkAsync(IAwsManager awsManager, S3Links.ICreateLinkRequest createLinkRequest, bool actuallyWrite, CancellationToken cancellationToken)
+        static async Task CreateLinkAsync(IAwsManager awsManager, S3Links.ICreateLinkRequest createLinkRequest, bool actuallyWrite,
+            CancellationToken cancellationToken)
         {
             if (cancellationToken.IsCancellationRequested)
                 return;
@@ -148,10 +150,12 @@ namespace AwsSyncer
                 await awsManager.CreateLinkAsync(createLinkRequest, cancellationToken).ConfigureAwait(false);
             }
             catch (OperationCanceledException)
-            { }
+            {
+            }
             catch (Exception ex)
             {
-                Console.WriteLine("Link {0} {1} -> {2} failed: {3}", createLinkRequest.Collection, relativePath, key[..12], ex.Message);
+                Console.WriteLine("Link {0} {1} -> {2} failed: {3}", createLinkRequest.Collection, relativePath, key[..12],
+                    ex.Message);
             }
         }
     }

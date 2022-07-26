@@ -18,13 +18,13 @@
 // FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
-using AwsSyncer.Types;
 using System;
 using System.Diagnostics;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Threading.Tasks.Dataflow;
+using AwsSyncer.Types;
 
 namespace AwsSyncer.FileBlobs
 {
@@ -86,22 +86,27 @@ namespace AwsSyncer.FileBlobs
 
                 var joiner = new LinkFingerprintJoiner(joinedTargetBlock);
 
-                annotatedPathBroadcastBlock.LinkTo(joiner.AnnotatedPathsBlock, new DataflowLinkOptions { PropagateCompletion = true });
+                annotatedPathBroadcastBlock.LinkTo(joiner.AnnotatedPathsBlock,
+                    new DataflowLinkOptions { PropagateCompletion = true });
 
                 var fileFingerprintBroadcastBlock = new BroadcastBlock<FileFingerprint>(ff => ff,
                     new DataflowBlockOptions { CancellationToken = cancellationToken });
 
-                fileFingerprintBroadcastBlock.LinkTo(joiner.FileFingerprintBlock, new DataflowLinkOptions { PropagateCompletion = true });
+                fileFingerprintBroadcastBlock.LinkTo(joiner.FileFingerprintBlock,
+                    new DataflowLinkOptions { PropagateCompletion = true });
 
                 var fingerprintGeneratorTask = _fileFingerprintManager
                     .GenerateFileFingerprintsAsync(annotatedPathBroadcastBlock, fileFingerprintBroadcastBlock, cancellationToken);
 
                 try
                 {
-                    await DirectoryScanner.GenerateAnnotatedPathsAsync(paths, filePredicate, annotatedPathBroadcastBlock, cancellationToken).ConfigureAwait(false);
+                    await DirectoryScanner
+                        .GenerateAnnotatedPathsAsync(paths, filePredicate, annotatedPathBroadcastBlock, cancellationToken)
+                        .ConfigureAwait(false);
                 }
                 catch (OperationCanceledException)
-                { }
+                {
+                }
                 catch (Exception ex)
                 {
                     Console.Write("Path scan failed: " + ex.Message);

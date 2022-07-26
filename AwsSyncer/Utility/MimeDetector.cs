@@ -18,14 +18,14 @@
 // FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
-using Microsoft.AspNetCore.StaticFiles;
-using Microsoft.Win32;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Runtime.Versioning;
+using Microsoft.AspNetCore.StaticFiles;
+using Microsoft.Win32;
 
 namespace AwsSyncer.Utility
 {
@@ -632,8 +632,8 @@ namespace AwsSyncer.Utility
         static void ScanRegistry()
         {
             foreach (var extension in Registry.ClassesRoot
-                .GetSubKeyNames()
-                .Where(sk => !string.IsNullOrWhiteSpace(sk) && sk[0] == '.'))
+                         .GetSubKeyNames()
+                         .Where(sk => !string.IsNullOrWhiteSpace(sk) && sk[0] == '.'))
             {
                 using var key = Registry.ClassesRoot.OpenSubKey(extension);
                 var mimeType = key?.GetValue("Content Type") as string;

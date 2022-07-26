@@ -18,13 +18,14 @@
 // FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
-using AwsSyncer.Types;
-using KeccakOpt;
 using System.Collections.Concurrent;
+using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Security.Cryptography;
 using System.Threading;
 using System.Threading.Tasks;
+using AwsSyncer.Types;
+using KeccakOpt;
 
 namespace AwsSyncer.FileBlobs
 {
@@ -38,7 +39,8 @@ namespace AwsSyncer.FileBlobs
         const int BufferSize = 256 * 1024;
         readonly ConcurrentStack<byte[]> _buffers = new();
 
-        [System.Diagnostics.CodeAnalysis.SuppressMessage("Security", "CA5351:Do Not Use Broken Cryptographic Algorithms", Justification = "MD5 is required for external API compatibility.")]
+        [SuppressMessage("Security", "CA5351:Do Not Use Broken Cryptographic Algorithms",
+            Justification = "MD5 is required for external API compatibility.")]
         public async Task<BlobFingerprint> GetFingerprintAsync(Stream stream, CancellationToken cancellationToken)
         {
             using var sha3 = new Keccak();
@@ -51,7 +53,7 @@ namespace AwsSyncer.FileBlobs
 
             var readTask = stream.ReadAsync(buffers[index], 0, buffers[index].Length, cancellationToken);
 
-            for (; ; )
+            for (;;)
             {
                 var length = await readTask.ConfigureAwait(false);
 

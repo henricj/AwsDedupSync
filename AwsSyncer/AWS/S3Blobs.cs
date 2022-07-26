@@ -18,10 +18,6 @@
 // FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
-using Amazon.S3;
-using Amazon.S3.Model;
-using AwsSyncer.Types;
-using AwsSyncer.Utility;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -29,6 +25,10 @@ using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Amazon.S3;
+using Amazon.S3.Model;
+using AwsSyncer.Types;
+using AwsSyncer.Utility;
 
 namespace AwsSyncer.AWS
 {
@@ -70,7 +70,7 @@ namespace AwsSyncer.AWS
                 Delimiter = "/"
             };
 
-            for (; ; )
+            for (;;)
             {
                 var response = await AmazonS3.ListObjectsV2Async(request, cancellationToken).ConfigureAwait(false);
 
@@ -134,7 +134,8 @@ namespace AwsSyncer.AWS
         {
             var request = (UploadBlobRequest)uploadBlobRequest;
 
-            Debug.WriteLine($"S3Blobs.UploadBlobAsync() {request.FileFingerprint.FullFilePath} ({request.FileFingerprint.Fingerprint.Key()[..12]})");
+            Debug.WriteLine(
+                $"S3Blobs.UploadBlobAsync() {request.FileFingerprint.FullFilePath} ({request.FileFingerprint.Fingerprint.Key()[..12]})");
 
             var putObjectRequest = request.Request;
 
@@ -166,7 +167,8 @@ namespace AwsSyncer.AWS
 
             if (fileInfo.Length != fingerprint.Size || fileInfo.LastWriteTimeUtc != tuple.Item1.LastModifiedUtc)
             {
-                Debug.WriteLine($"BuildUploadRequest(): {fileInfo.FullName} changed {fingerprint.Size} != {fileInfo.Length} || {tuple.Item1.LastModifiedUtc} != {fileInfo.LastWriteTimeUtc} ({tuple.Item1.LastModifiedUtc - fileInfo.LastWriteTimeUtc})");
+                Debug.WriteLine(
+                    $"BuildUploadRequest(): {fileInfo.FullName} changed {fingerprint.Size} != {fileInfo.Length} || {tuple.Item1.LastModifiedUtc} != {fileInfo.LastWriteTimeUtc} ({tuple.Item1.LastModifiedUtc - fileInfo.LastWriteTimeUtc})");
 
                 return null;
             }

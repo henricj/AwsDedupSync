@@ -38,23 +38,24 @@ namespace AwsSyncer.Types
 
         public bool Equals(AnnotatedPath other)
         {
-            if (other is null) return false;
-            if (ReferenceEquals(this, other)) return true;
+            if (other is null)
+                return false;
+            if (ReferenceEquals(this, other))
+                return true;
 
             return FileInfo.Equals(other.FileInfo)
                    && string.Equals(Collection, other.Collection, StringComparison.OrdinalIgnoreCase)
                    && string.Equals(RelativePath, other.RelativePath, StringComparison.OrdinalIgnoreCase);
         }
 
-        public override string ToString()
-        {
-            return '[' + Collection + ']' + RelativePath;
-        }
+        public override string ToString() => '[' + Collection + ']' + RelativePath;
 
         public override bool Equals(object obj)
         {
-            if (obj is null) return false;
-            if (ReferenceEquals(this, obj)) return true;
+            if (obj is null)
+                return false;
+            if (ReferenceEquals(this, obj))
+                return true;
 
             return obj is AnnotatedPath path && Equals(path);
         }
@@ -71,14 +72,8 @@ namespace AwsSyncer.Types
             }
         }
 
-        public static bool operator ==(AnnotatedPath left, AnnotatedPath right)
-        {
-            return Equals(left, right);
-        }
+        public static bool operator ==(AnnotatedPath left, AnnotatedPath right) => Equals(left, right);
 
-        public static bool operator !=(AnnotatedPath left, AnnotatedPath right)
-        {
-            return !Equals(left, right);
-        }
+        public static bool operator !=(AnnotatedPath left, AnnotatedPath right) => !Equals(left, right);
     }
 }

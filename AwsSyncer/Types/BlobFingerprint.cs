@@ -18,10 +18,10 @@
 // FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
-using AwsSyncer.AWS;
 using System;
 using System.Linq;
 using System.Runtime.Serialization;
+using AwsSyncer.AWS;
 
 namespace AwsSyncer.Types
 {
@@ -57,14 +57,13 @@ namespace AwsSyncer.Types
             Md5 = md5;
         }
 
-        [DataMember(Order = 0)]
-        public long Size { get; }
-        [DataMember(Order = 1)]
-        public byte[] Sha3_512 { get; }
-        [DataMember(Order = 2)]
-        public byte[] Sha2_256 { get; }
-        [DataMember(Order = 3)]
-        public byte[] Md5 { get; }
+        [DataMember(Order = 0)] public long Size { get; }
+
+        [DataMember(Order = 1)] public byte[] Sha3_512 { get; }
+
+        [DataMember(Order = 2)] public byte[] Sha2_256 { get; }
+
+        [DataMember(Order = 3)] public byte[] Md5 { get; }
 
         public bool Equals(BlobFingerprint other)
         {
@@ -80,41 +79,23 @@ namespace AwsSyncer.Types
                    && Md5.SequenceEqual(other.Md5);
         }
 
-        public static bool operator ==(BlobFingerprint left, BlobFingerprint right)
-        {
-            return Equals(left, right);
-        }
+        public static bool operator ==(BlobFingerprint left, BlobFingerprint right) => Equals(left, right);
 
-        public static bool operator !=(BlobFingerprint left, BlobFingerprint right)
-        {
-            return !Equals(left, right);
-        }
+        public static bool operator !=(BlobFingerprint left, BlobFingerprint right) => !Equals(left, right);
 
         #region Object
 
-        public override bool Equals(object obj)
-        {
-            return Equals(obj as BlobFingerprint);
-        }
+        public override bool Equals(object obj) => Equals(obj as BlobFingerprint);
 
-        public override int GetHashCode()
-        {
-            return BitConverter.ToInt32(Sha3_512, 0);
-        }
+        public override int GetHashCode() => BitConverter.ToInt32(Sha3_512, 0);
 
         #endregion // Object
     }
 
     public static class BlobFingerprintExtensions
     {
-        public static string Key(this BlobFingerprint fingerprint)
-        {
-            return S3Util.S3EncodeKey(fingerprint.Sha3_512);
-        }
+        public static string Key(this BlobFingerprint fingerprint) => S3Util.S3EncodeKey(fingerprint.Sha3_512);
 
-        public static string S3ETag(this BlobFingerprint fingerprint)
-        {
-            return S3Util.ComputeS3Etag(fingerprint.Md5);
-        }
+        public static string S3ETag(this BlobFingerprint fingerprint) => S3Util.ComputeS3Etag(fingerprint.Md5);
     }
 }

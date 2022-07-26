@@ -18,10 +18,6 @@
 // FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
-using AwsSyncer.Types;
-using AwsSyncer.Utility;
-using Newtonsoft.Json;
-using Newtonsoft.Json.Bson;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -29,6 +25,10 @@ using System.IO;
 using System.IO.Compression;
 using System.Threading;
 using System.Threading.Tasks;
+using AwsSyncer.Types;
+using AwsSyncer.Utility;
+using Newtonsoft.Json;
+using Newtonsoft.Json.Bson;
 
 namespace AwsSyncer.FingerprintStore
 {
@@ -113,12 +113,10 @@ namespace AwsSyncer.FingerprintStore
             }
         }
 
-        static Stream OpenBsonFileForRead(FileInfo fi)
-        {
-            return new FileStream(fi.FullName, FileMode.Open,
+        static Stream OpenBsonFileForRead(FileInfo fi) =>
+            new FileStream(fi.FullName, FileMode.Open,
                 FileAccess.Read, FileShare.Read,
                 8192, FileOptions.SequentialScan | FileOptions.Asynchronous);
-        }
 
         Stream OpenBsonFileForWrite(FileInfo fi)
         {
@@ -208,7 +206,8 @@ namespace AwsSyncer.FingerprintStore
                     await using (decodeStream.ConfigureAwait(false))
                     await using (fileStream.ConfigureAwait(false))
                     {
-                        using var br = new BsonDataReader(bs) { DateTimeKindHandling = DateTimeKind.Utc, SupportMultipleContent = true };
+                        using var br = new BsonDataReader(bs)
+                            { DateTimeKindHandling = DateTimeKind.Utc, SupportMultipleContent = true };
                         while (await br.ReadAsync(cancellationToken).ConfigureAwait(false))
                         {
                             cancellationToken.ThrowIfCancellationRequested();
@@ -410,9 +409,7 @@ namespace AwsSyncer.FingerprintStore
                 _fileSequence.Rescan();
             }
             else
-            {
                 tempFileInfo?.Delete();
-            }
         }
 
         async Task StoreBlobsImplAsync(ICollection<FileFingerprint> fileFingerprints, CancellationToken cancellationToken)

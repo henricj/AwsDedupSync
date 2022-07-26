@@ -41,20 +41,20 @@ namespace AwsSyncer.Types
             LastModifiedUtc = lastModifiedUtc;
         }
 
-        [DataMember(Order = 0)]
-        public string FullFilePath { get; }
-        [DataMember(Order = 1)]
-        public DateTime LastModifiedUtc { get; }
-        [DataMember(Order = 2)]
-        public BlobFingerprint Fingerprint { get; }
+        [DataMember(Order = 0)] public string FullFilePath { get; }
 
-        [IgnoreDataMember]
-        public bool WasCached { get; } = true;
+        [DataMember(Order = 1)] public DateTime LastModifiedUtc { get; }
+
+        [DataMember(Order = 2)] public BlobFingerprint Fingerprint { get; }
+
+        [IgnoreDataMember] public bool WasCached { get; } = true;
 
         public bool Equals(FileFingerprint other)
         {
-            if (other is null) return false;
-            if (ReferenceEquals(this, other)) return true;
+            if (other is null)
+                return false;
+            if (ReferenceEquals(this, other))
+                return true;
 
             return string.Equals(FullFilePath, other.FullFilePath, StringComparison.OrdinalIgnoreCase)
                    && LastModifiedUtc.Equals(other.LastModifiedUtc)
@@ -63,8 +63,10 @@ namespace AwsSyncer.Types
 
         public override bool Equals(object obj)
         {
-            if (obj is null) return false;
-            if (ReferenceEquals(this, obj)) return true;
+            if (obj is null)
+                return false;
+            if (ReferenceEquals(this, obj))
+                return true;
 
             return obj is FileFingerprint ff && Equals(ff);
         }
@@ -81,14 +83,8 @@ namespace AwsSyncer.Types
             }
         }
 
-        public static bool operator ==(FileFingerprint left, FileFingerprint right)
-        {
-            return Equals(left, right);
-        }
+        public static bool operator ==(FileFingerprint left, FileFingerprint right) => Equals(left, right);
 
-        public static bool operator !=(FileFingerprint left, FileFingerprint right)
-        {
-            return !Equals(left, right);
-        }
+        public static bool operator !=(FileFingerprint left, FileFingerprint right) => !Equals(left, right);
     }
 }

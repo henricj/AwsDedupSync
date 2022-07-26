@@ -18,8 +18,6 @@
 // FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
-using AwsSyncer.Types;
-using AwsSyncer.Utility;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -27,6 +25,8 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Threading.Tasks.Dataflow;
+using AwsSyncer.Types;
+using AwsSyncer.Utility;
 
 namespace AwsSyncer.FileBlobs
 {
@@ -45,11 +45,14 @@ namespace AwsSyncer.FileBlobs
                     RandomUtil.Shuffle(filenames);
 
                     return filenames;
-                }, new ExecutionDataflowBlockOptions { CancellationToken = cancellationToken, MaxDegreeOfParallelism = Environment.ProcessorCount });
+                },
+                new ExecutionDataflowBlockOptions
+                    { CancellationToken = cancellationToken, MaxDegreeOfParallelism = Environment.ProcessorCount });
 
             shuffleBlock.LinkTo(filePathTargetBlock, new DataflowLinkOptions { PropagateCompletion = true });
 
-            var batcher = new BatchBlock<AnnotatedPath>(2048, new GroupingDataflowBlockOptions { CancellationToken = cancellationToken });
+            var batcher = new BatchBlock<AnnotatedPath>(2048,
+                new GroupingDataflowBlockOptions { CancellationToken = cancellationToken });
 
             batcher.LinkTo(shuffleBlock, new DataflowLinkOptions
             {
@@ -74,7 +77,8 @@ namespace AwsSyncer.FileBlobs
                             }
                         },
                         cancellationToken,
-                        TaskCreationOptions.DenyChildAttach | TaskCreationOptions.LongRunning | TaskCreationOptions.RunContinuationsAsynchronously,
+                        TaskCreationOptions.DenyChildAttach | TaskCreationOptions.LongRunning |
+                        TaskCreationOptions.RunContinuationsAsynchronously,
                         TaskScheduler.Default));
 
             var task = Task.WhenAll(scanTasks);

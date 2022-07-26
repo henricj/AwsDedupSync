@@ -51,15 +51,9 @@ namespace AwsSyncer.Utility
             _baseStream.Flush();
         }
 
-        public override Task FlushAsync(CancellationToken cancellationToken)
-        {
-            return _baseStream.FlushAsync(cancellationToken);
-        }
+        public override Task FlushAsync(CancellationToken cancellationToken) => _baseStream.FlushAsync(cancellationToken);
 
-        public override long Seek(long offset, SeekOrigin origin)
-        {
-            throw new NotSupportedException();
-        }
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
 
         public override void SetLength(long value)
         {
@@ -76,10 +70,8 @@ namespace AwsSyncer.Utility
             return length;
         }
 
-        public override IAsyncResult BeginRead(byte[] buffer, int offset, int count, AsyncCallback callback, object state)
-        {
-            return _baseStream.BeginRead(buffer, offset, count, callback, state);
-        }
+        public override IAsyncResult BeginRead(byte[] buffer, int offset, int count, AsyncCallback callback, object state) =>
+            _baseStream.BeginRead(buffer, offset, count, callback, state);
 
         public override int EndRead(IAsyncResult asyncResult)
         {
@@ -120,19 +112,16 @@ namespace AwsSyncer.Utility
 
             return length;
         }
+
         public override void Write(byte[] buffer, int offset, int count)
         {
             throw new NotSupportedException();
         }
 
-        public override Task WriteAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken)
-        {
+        public override Task WriteAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken) =>
             throw new NotSupportedException();
-        }
 
-        public override ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken = default)
-        {
+        public override ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken = default) =>
             throw new NotSupportedException();
-        }
     }
 }

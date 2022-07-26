@@ -18,9 +18,6 @@
 // FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
-using AwsSyncer.FingerprintStore;
-using AwsSyncer.Types;
-using AwsSyncer.Utility;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -30,6 +27,9 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Threading.Tasks.Dataflow;
+using AwsSyncer.FingerprintStore;
+using AwsSyncer.Types;
+using AwsSyncer.Utility;
 
 namespace AwsSyncer.FileBlobs
 {
@@ -86,7 +86,8 @@ namespace AwsSyncer.FileBlobs
             // caller will not block for too long.  We do need to make sure that the annotatedPathSourceBlock
             // has been linked to something before we await (GenerateFileFingerprintsAsync() takes care
             // of this before its first await).
-            _previouslyCachedFileFingerprints = await Task.Run(() => _blobPathStore.LoadBlobsAsync(cancellationToken), cancellationToken).ConfigureAwait(false);
+            _previouslyCachedFileFingerprints = await Task
+                .Run(() => _blobPathStore.LoadBlobsAsync(cancellationToken), cancellationToken).ConfigureAwait(false);
 
             Debug.WriteLine($"Loaded {_previouslyCachedFileFingerprints.Count} known files");
         }
@@ -99,9 +100,11 @@ namespace AwsSyncer.FileBlobs
 
             bufferBlock.LinkTo(fileFingerprintTargetBlock, new DataflowLinkOptions { PropagateCompletion = true });
 
-            var storeBatchBlock = new BatchBlock<FileFingerprint>(FlushCount, new GroupingDataflowBlockOptions { CancellationToken = cancellationToken });
+            var storeBatchBlock = new BatchBlock<FileFingerprint>(FlushCount,
+                new GroupingDataflowBlockOptions { CancellationToken = cancellationToken });
 
-            var broadcastBlock = new BroadcastBlock<FileFingerprint>(ff => ff, new ExecutionDataflowBlockOptions { CancellationToken = cancellationToken });
+            var broadcastBlock = new BroadcastBlock<FileFingerprint>(ff => ff,
+                new ExecutionDataflowBlockOptions { CancellationToken = cancellationToken });
 
             broadcastBlock.LinkTo(storeBatchBlock, new DataflowLinkOptions { PropagateCompletion = true }, ff => !ff.WasCached);
             broadcastBlock.LinkTo(bufferBlock, new DataflowLinkOptions { PropagateCompletion = true });
@@ -120,7 +123,8 @@ namespace AwsSyncer.FileBlobs
 
             var storeTask = StoreFileFingerprintsAsync(storeBatchBlock, cancellationToken);
 
-            var transformTask = TransformAnnotatedPathsToFileFingerprint(annotatedPathSourceBlock, broadcastBlock, cancellationToken);
+            var transformTask =
+                TransformAnnotatedPathsToFileFingerprint(annotatedPathSourceBlock, broadcastBlock, cancellationToken);
 
             return Task.WhenAll(storeTask, transformTask);
         }
@@ -132,7 +136,8 @@ namespace AwsSyncer.FileBlobs
 
             if (fileFingerprint.Fingerprint.Size != fileInfo.Length || fileFingerprint.LastModifiedUtc != fileInfo.LastWriteTimeUtc)
             {
-                Debug.WriteLine($"{fileInfo.FullName} changed {fileFingerprint.Fingerprint.Size} != {fileInfo.Length} || {fileFingerprint.LastModifiedUtc} != {fileInfo.LastAccessTime} ({fileFingerprint.LastModifiedUtc != fileInfo.LastWriteTimeUtc})");
+                Debug.WriteLine(
+                    $"{fileInfo.FullName} changed {fileFingerprint.Fingerprint.Size} != {fileInfo.Length} || {fileFingerprint.LastModifiedUtc} != {fileInfo.LastAccessTime} ({fileFingerprint.LastModifiedUtc != fileInfo.LastWriteTimeUtc})");
 
                 return null;
             }
@@ -173,13 +178,15 @@ namespace AwsSyncer.FileBlobs
                 if (fingerprint.Size != fileInfo.Length)
                     return null;
 
-                Debug.WriteLine($"FileFingerprintManager.ProcessFileAsync({fileInfo.FullName}) scanned {fingerprint.Size.BytesToMiB():F3}MiB in {sw.Elapsed}");
+                Debug.WriteLine(
+                    $"FileFingerprintManager.ProcessFileAsync({fileInfo.FullName}) scanned {fingerprint.Size.BytesToMiB():F3}MiB in {sw.Elapsed}");
 
                 var fileFingerprint = new FileFingerprint(fileInfo.FullName, fileInfo.LastWriteTimeUtc, fingerprint, false);
 
                 fileInfo.Refresh();
 
-                if (fileInfo.LastWriteTimeUtc != fileFingerprint.LastModifiedUtc || fileInfo.Length != fileFingerprint.Fingerprint.Size)
+                if (fileInfo.LastWriteTimeUtc != fileFingerprint.LastModifiedUtc ||
+                    fileInfo.Length != fileFingerprint.Fingerprint.Size)
                 {
                     Debug.WriteLine($"FileFingerprintManager.ProcessFileAsync() {fileInfo.FullName} changed during scan");
 
@@ -226,7 +233,9 @@ namespace AwsSyncer.FileBlobs
         {
             try
             {
-                var targets = new ConcurrentDictionary<string, TransformBlock<AnnotatedPath, FileFingerprint>>(StringComparer.InvariantCultureIgnoreCase);
+                var targets =
+                    new ConcurrentDictionary<string, TransformBlock<AnnotatedPath, FileFingerprint>>(StringComparer
+                        .InvariantCultureIgnoreCase);
 
                 var routeBlock = new ActionBlock<AnnotatedPath[]>(
                     async filenames =>
@@ -250,7 +259,8 @@ namespace AwsSyncer.FileBlobs
                             TransformBlock<AnnotatedPath, FileFingerprint> target;
                             while (!targets.TryGetValue(host, out target))
                             {
-                                target = new TransformBlock<AnnotatedPath, FileFingerprint>(annotatedPath => ProcessFileAsync(annotatedPath.FileInfo, cancellationToken),
+                                target = new TransformBlock<AnnotatedPath, FileFingerprint>(
+                                    annotatedPath => ProcessFileAsync(annotatedPath.FileInfo, cancellationToken),
                                     new ExecutionDataflowBlockOptions
                                     {
                                         MaxDegreeOfParallelism = 5,

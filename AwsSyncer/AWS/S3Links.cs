@@ -18,16 +18,17 @@
 // FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
-using Amazon.S3;
-using Amazon.S3.Model;
-using AwsSyncer.Types;
-using AwsSyncer.Utility;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using Amazon.S3;
+using Amazon.S3.Model;
+using AwsSyncer.Types;
+using AwsSyncer.Utility;
 
 namespace AwsSyncer.AWS
 {
@@ -53,7 +54,7 @@ namespace AwsSyncer.AWS
                 Prefix = _pathManager.GetTreeNamePrefix(name)
             };
 
-            for (; ; )
+            for (;;)
             {
                 var response = await AmazonS3.ListObjectsV2Async(request, cancellationToken).ConfigureAwait(false);
 
@@ -71,8 +72,10 @@ namespace AwsSyncer.AWS
             }
         }
 
-        [System.Diagnostics.CodeAnalysis.SuppressMessage("Security", "CA5351:Do Not Use Broken Cryptographic Algorithms", Justification = "MD5 is required for external API compatibility.")]
-        public ICreateLinkRequest BuildCreateLinkRequest(string collection, string relativePath, FileFingerprint fileFingerprint, string existingETag)
+        [SuppressMessage("Security", "CA5351:Do Not Use Broken Cryptographic Algorithms",
+            Justification = "MD5 is required for external API compatibility.")]
+        public ICreateLinkRequest BuildCreateLinkRequest(string collection, string relativePath, FileFingerprint fileFingerprint,
+            string existingETag)
         {
             var link = '/' + _pathManager.GetBlobPath(fileFingerprint);
 

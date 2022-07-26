@@ -1,18 +1,18 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 
 <Dictionary>
-  <Acronyms>
-    <CasingExceptions>
-      <Acronym>AWS</Acronym>
-      <Acronym>S3</Acronym>
-    </CasingExceptions>
-  </Acronyms>
-  <Words>
-    <Recognized>
-      <Word>AWS</Word>
-      <Word>S3</Word>
-      <Word>syncer</Word>
-      <Word>dedup</Word>
-    </Recognized>
-  </Words>
+	<Acronyms>
+		<CasingExceptions>
+			<Acronym>AWS</Acronym>
+			<Acronym>S3</Acronym>
+		</CasingExceptions>
+	</Acronyms>
+	<Words>
+		<Recognized>
+			<Word>AWS</Word>
+			<Word>S3</Word>
+			<Word>syncer</Word>
+			<Word>dedup</Word>
+		</Recognized>
+	</Words>
 </Dictionary>
