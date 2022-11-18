@@ -26,6 +26,7 @@ using System.Threading.Tasks;
 using System.Threading.Tasks.Dataflow;
 using AwsSyncer.AWS;
 using AwsSyncer.Types;
+using AwsSyncer.Utility;
 
 namespace AwsDedupSync
 {

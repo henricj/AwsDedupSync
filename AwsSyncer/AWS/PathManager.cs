@@ -27,7 +27,7 @@ namespace AwsSyncer.AWS
     public interface IPathManager
     {
         string Bucket { get; }
-        Uri AwsS3Url { get; }
+        string Region { get; }
         string BlobPrefix { get; }
         string TreePrefix { get; }
 
@@ -44,16 +44,14 @@ namespace AwsSyncer.AWS
         string _blobPrefix = "b/";
         string _treePrefix = "t/";
 
-        public PathManager(Uri awsS3Url, string bucket)
+        public PathManager(string region, string bucket)
         {
-            if (awsS3Url == null)
-                throw new ArgumentNullException(nameof(awsS3Url));
-            if (!awsS3Url.IsAbsoluteUri)
-                throw new ArgumentException("the url must be absolute", nameof(awsS3Url));
+            if (region == null)
+                throw new ArgumentNullException(nameof(region));
             if (string.IsNullOrWhiteSpace(bucket))
                 throw new ArgumentException("Argument is null or whitespace", nameof(bucket));
 
-            AwsS3Url = awsS3Url;
+            Region = region;
             Bucket = bucket;
         }
 
@@ -88,7 +86,7 @@ namespace AwsSyncer.AWS
         }
 
         public string Bucket { get; }
-        public Uri AwsS3Url { get; }
+        public string Region { get; }
 
         public string GetBlobPath(FileFingerprint fileFingerprint) => BlobPrefix + fileFingerprint.Fingerprint.Key();
 

@@ -18,7 +18,6 @@
 // FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
-using System;
 using Amazon.S3;
 using Microsoft.Extensions.Configuration;
 
@@ -31,9 +30,9 @@ namespace AwsSyncer.AWS
             var options = awsConfig.GetAWSOptions();
             var amazonS3 = options.CreateServiceClient<IAmazonS3>();
 
-            var s3Url = amazonS3.Config.DetermineServiceURL();
+            var region = amazonS3.Config.RegionEndpoint.DisplayName;
 
-            var pathManager = new PathManager(new Uri(s3Url, UriKind.Absolute), bucket);
+            var pathManager = new PathManager(region, bucket);
 
             return new AwsManager(awsConfig, amazonS3, pathManager);
         }
