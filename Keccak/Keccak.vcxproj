@@ -20,7 +20,7 @@
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <ProjectGuid>{2DC0AD6E-CD87-4679-A1BE-F29FD931681B}</ProjectGuid>
-    <TargetFramework>.net6.0</TargetFramework>
+    <TargetFramework>net7.0</TargetFramework>
     <Keyword>ManagedCProj</Keyword>
     <RootNamespace>KeccakOpt</RootNamespace>
     <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
