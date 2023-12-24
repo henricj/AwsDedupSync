@@ -1,16 +1,16 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
-<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk.Web">
   <PropertyGroup>
-    <TargetFramework>net7.0</TargetFramework>
+    <TargetFramework>net8.0</TargetFramework>
     <!--<RuntimeIdentifiers>win7-x64;win7-x86</RuntimeIdentifiers>-->
     <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
     <EnableDefaultNoneItems>false</EnableDefaultNoneItems>
-    <Copyright>Copyright © Henric Jungheim 2014-2020</Copyright>
+    <Copyright>Copyright © Henric Jungheim 2014-2023</Copyright>
     <Authors>Henric Jungheim</Authors>
     <Company>Henric Jungheim</Company>
     <Platforms>x64;x86</Platforms>
-    <LangVersion>9.0</LangVersion>
     <AnalysisLevel>latest-recommended</AnalysisLevel>
+    <OutputType>Library</OutputType>
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="FingerprintStore\MemoryStreamExtensions.cs" />
@@ -32,6 +32,7 @@
     <Compile Include="Utility\HashEqualityComparer.cs" />
     <Compile Include="LinkFingerprintJoiner.cs" />
     <Compile Include="LinkManager.cs" />
+    <Compile Include="Utility\MimeDetector.BaseMimeTypes.cs" />
     <Compile Include="Utility\MimeDetector.cs" />
     <Compile Include="Utility\MsTicksDateTimeJsonConverter.cs" />
     <Compile Include="AWS\PathManager.cs" />
@@ -50,24 +51,19 @@
     <Compile Include="Utility\TaskCollector.cs" />
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\Keccak\Keccak.vcxproj">
-      <Project>{2dc0ad6e-cd87-4679-a1be-f29fd931681b}</Project>
-      <Name>Keccak</Name>
-      <TreatAsUsed>true</TreatAsUsed>
-    </ProjectReference>
-  </ItemGroup>
-  <ItemGroup>
-    <PackageReference Include="AWSSDK.Extensions.NETCore.Setup" Version="3.7.2" />
-    <PackageReference Include="AWSSDK.S3" Version="3.7.101.27" />
-    <PackageReference Include="MessagePack" Version="2.4.59" />
-    <PackageReference Include="Microsoft.AspNetCore.StaticFiles" Version="2.2.0" />
-    <PackageReference Include="Microsoft.AspNetCore.WebUtilities" Version="2.2.0" />
+    <PackageReference Include="AWSSDK.Extensions.NETCore.Setup" Version="3.7.300" />
+    <PackageReference Include="AWSSDK.S3" Version="3.7.305" />
+    <PackageReference Include="MessagePack" Version="2.5.140" />
+    <PackageReference Include="Microsoft.AspNetCore.WebUtilities" Version="8.0.0" />
     <PackageReference Include="Newtonsoft.Json.Bson">
       <Version>1.0.2</Version>
     </PackageReference>
-    <PackageReference Include="System.Configuration.ConfigurationManager" Version="7.0.0" />
-    <PackageReference Include="System.IO.Packaging" Version="7.0.0" />
-    <PackageReference Include="System.IO.Pipelines" Version="7.0.0" />
+    <PackageReference Include="System.Configuration.ConfigurationManager" Version="8.0.0" />
+    <PackageReference Include="System.IO.Packaging" Version="8.0.0" />
+    <PackageReference Include="System.IO.Pipelines" Version="8.0.0" />
     <PackageReference Include="ZeroFormatter.Analyzer" Version="1.1.1" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Keccak\Keccak.vcxproj" />
   </ItemGroup>
 </Project>

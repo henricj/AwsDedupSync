@@ -1,19 +1,18 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
+
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <TargetFramework>net7.0</TargetFramework>
+    <TargetFramework>net8.0</TargetFramework>
     <!--<RuntimeIdentifiers>win7-x64;win7-x86</RuntimeIdentifiers>-->
     <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
     <EnableDefaultNoneItems>false</EnableDefaultNoneItems>
-    <Copyright>Copyright © Henric Jungheim 2014-2022</Copyright>
+    <Copyright>Copyright © Henric Jungheim 2014-2023</Copyright>
     <Authors>Henric Jungheim</Authors>
     <Company>Henric Jungheim</Company>
     <Platforms>x64;x86</Platforms>
     <ApplicationIcon />
     <OutputType>Exe</OutputType>
-    <StartupObject />
     <ApplicationManifest>AwsDedupSync.manifest</ApplicationManifest>
-    <LangVersion>9.0</LangVersion>
     <AnalysisLevel>latest-recommended</AnalysisLevel>
   </PropertyGroup>
   <ItemGroup>
@@ -35,7 +34,7 @@
     <CodeAnalysisDictionary Include="CustomDictionary.xml" />
   </ItemGroup>
   <ItemGroup>
-    <PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="7.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="8.0.0" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\AwsSyncer\AwsSyncer.csproj">
