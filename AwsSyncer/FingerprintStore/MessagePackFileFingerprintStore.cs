@@ -34,7 +34,7 @@ namespace AwsSyncer.FingerprintStore;
 
 public sealed partial class MessagePackFileFingerprintStore : IFileFingerprintStore
 {
-    static readonly Dictionary<string, FileFingerprint> EmptyFileFingerprints = new();
+    static readonly Dictionary<string, FileFingerprint> EmptyFileFingerprints = [];
     static readonly IMessagePackFormatter<int> IntFormatter = MessagePackSerializer.DefaultOptions.Resolver.GetFormatter<int>();
     readonly FileSequence _fileSequence;
     readonly AsyncLock _lock = new();
@@ -115,6 +115,9 @@ public sealed partial class MessagePackFileFingerprintStore : IFileFingerprintSt
 
     static Stream OpenMsgPackFileForWrite(FileInfo fi)
     {
+        if (fi.Directory is null)
+            throw new InvalidOperationException($"No directory for {fi.FullName}");
+
         fi.Directory.Refresh();
 
         if (!fi.Directory.Exists)

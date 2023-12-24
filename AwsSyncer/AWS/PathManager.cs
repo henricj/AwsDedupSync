@@ -46,8 +46,7 @@ public class PathManager : IPathManager
 
     public PathManager(string region, string bucket)
     {
-        if (region == null)
-            throw new ArgumentNullException(nameof(region));
+        ArgumentNullException.ThrowIfNull(region);
         if (string.IsNullOrWhiteSpace(bucket))
             throw new ArgumentException("Argument is null or whitespace", nameof(bucket));
 

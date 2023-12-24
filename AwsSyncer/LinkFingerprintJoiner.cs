@@ -29,7 +29,7 @@ using AwsSyncer.Utility;
 
 namespace AwsSyncer;
 
-class LinkFingerprintJoiner
+sealed class LinkFingerprintJoiner
 {
     readonly ConcurrentDictionary<string, PathFingerprint> _join = new(StringComparer.CurrentCultureIgnoreCase);
 
@@ -85,7 +85,7 @@ class LinkFingerprintJoiner
             if (0 == pathFingerprint.AnnotatedPaths.Count)
                 return Task.CompletedTask;
 
-            annotatedPaths = pathFingerprint.AnnotatedPaths.Values.ToArray();
+            annotatedPaths = [.. pathFingerprint.AnnotatedPaths.Values];
         }
 
         var tasks = annotatedPaths.Select(ap => _targetBlock.SendAsync(Tuple.Create(ap, fileFingerprint)));
@@ -120,9 +120,9 @@ class LinkFingerprintJoiner
         return _targetBlock.SendAsync(Tuple.Create(annotatedPath, fileFingerprint));
     }
 
-    class PathFingerprint
+    sealed class PathFingerprint
     {
-        public readonly Dictionary<Tuple<string, string>, AnnotatedPath> AnnotatedPaths = new();
+        public readonly Dictionary<Tuple<string, string>, AnnotatedPath> AnnotatedPaths = [];
 
         public FileFingerprint FileFingerprint;
     }

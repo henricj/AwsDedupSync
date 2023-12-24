@@ -30,11 +30,10 @@ using AwsSyncer.Utility;
 
 namespace AwsDedupSync;
 
-public class S3BlobUploader
+public class S3BlobUploader(S3Settings s3Settings)
 {
-    readonly S3Settings _s3Settings;
-
-    public S3BlobUploader(S3Settings s3Settings) => _s3Settings = s3Settings ?? throw new ArgumentNullException(nameof(s3Settings));
+    readonly S3Settings _s3Settings = s3Settings
+        ?? throw new ArgumentNullException(nameof(s3Settings));
 
     public Task UploadBlobsAsync(IAwsManager awsManager,
         ISourceBlock<Tuple<FileFingerprint, AnnotatedPath>> uniqueBlobBlock,
@@ -74,7 +73,7 @@ public class S3BlobUploader
 
                 var request = awsManager.BuildUploadBlobRequest(tuple);
 
-                if (null == request)
+                if (request is null)
                     return null;
 
                 Interlocked.Increment(ref blobCount);
@@ -120,7 +119,7 @@ public class S3BlobUploader
     async Task UploadBlobAsync(IAwsManager awsManager, S3Blobs.IUploadBlobRequest uploadBlobRequest,
         CancellationToken cancellationToken)
     {
-        if (null == uploadBlobRequest)
+        if (uploadBlobRequest is null)
             return;
 
         Console.WriteLine("Upload {0} as {1}",

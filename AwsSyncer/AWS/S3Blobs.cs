@@ -32,22 +32,18 @@ using AwsSyncer.Utility;
 
 namespace AwsSyncer.AWS;
 
-public sealed class S3Blobs : S3PutBase
+public sealed class S3Blobs(IAmazonS3 amazon, IPathManager pathManager, S3StorageClass s3StorageClass)
+    : S3PutBase(amazon)
 {
     const int KeyLength = 512 / 8;
-    readonly IPathManager _pathManager;
-    readonly S3StorageClass _s3StorageClass;
-
-    public S3Blobs(IAmazonS3 amazon, IPathManager pathManager, S3StorageClass s3StorageClass)
-        : base(amazon)
-    {
-        _pathManager = pathManager ?? throw new ArgumentNullException(nameof(pathManager));
-        _s3StorageClass = s3StorageClass ?? throw new ArgumentNullException(nameof(s3StorageClass));
-    }
+    readonly IPathManager _pathManager = pathManager
+        ?? throw new ArgumentNullException(nameof(pathManager));
+    readonly S3StorageClass _s3StorageClass = s3StorageClass
+        ?? throw new ArgumentNullException(nameof(s3StorageClass));
 
     public async Task<IReadOnlyDictionary<byte[], string>> ListAsync(Statistics statistics, CancellationToken cancellationToken)
     {
-        if (null == S3Util.KeyAlphabet)
+        if (S3Util.KeyAlphabet is null)
             return await ListAsync(_pathManager.BlobPrefix, statistics, cancellationToken).ConfigureAwait(false);
 
         var tasks = S3Util.KeyAlphabet
@@ -79,14 +75,10 @@ public sealed class S3Blobs : S3PutBase
                 var key = _pathManager.GetKeyFromBlobPath(s3Object.Key);
 
                 // Ignore the folder itself (if there is an empty object there).
-                if (null == key)
+                if (key is null)
                     continue;
 
-                if (null != statistics)
-                {
-                    Interlocked.Increment(ref statistics.Count);
-                    Interlocked.Add(ref statistics.TotalSize, s3Object.Size);
-                }
+                statistics?.Add(s3Object.Size);
 
                 if (key.Length != KeyLength)
                 {
@@ -221,15 +213,25 @@ public sealed class S3Blobs : S3PutBase
         };
     }
 
-    public class Statistics
+    public sealed class Statistics
     {
-        public long Count;
-        public long TotalSize;
+        long _count;
+        long _totalSize;
+
+        public long Count => _count;
+
+        public long TotalSize => _totalSize;
+
+        public void Add(long size)
+        {
+            Interlocked.Increment(ref _count);
+            Interlocked.Add(ref _totalSize, size);
+        }
 
         public void Clear()
         {
-            Count = 0;
-            TotalSize = 0;
+            _count = 0;
+            _totalSize = 0;
         }
     }
 
@@ -239,9 +241,9 @@ public sealed class S3Blobs : S3PutBase
         FileFingerprint FileFingerprint { get; }
     }
 
-    class UploadBlobRequest : S3PutRequest, IUploadBlobRequest
+    sealed class UploadBlobRequest : S3PutRequest, IUploadBlobRequest
     {
-        public string Key { get; set; }
-        public FileFingerprint FileFingerprint { get; set; }
+        public string Key { get; init; }
+        public FileFingerprint FileFingerprint { get; init; }
     }
 }

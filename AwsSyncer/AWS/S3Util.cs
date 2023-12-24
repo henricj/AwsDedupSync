@@ -54,7 +54,7 @@ public static class S3Util
         if (64 != alphabet.Count)
             return null;
 
-        return alphabet.OrderBy(c => c).ToArray();
+        return [.. alphabet.OrderBy(c => c)];
     }
 
     public static string S3EncodeKey(byte[] value) => Base64UrlTextEncoder.Encode(value);

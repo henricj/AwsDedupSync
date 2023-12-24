@@ -29,7 +29,7 @@ namespace AwsSyncer.FingerprintStore;
 
 public class FileSequence
 {
-    static readonly List<FileInfo> EmptyFiles = new();
+    static readonly List<FileInfo> EmptyFiles = [];
     readonly DirectoryInfo _directory;
     List<FileInfo> _files = EmptyFiles;
 

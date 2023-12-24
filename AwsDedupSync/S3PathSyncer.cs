@@ -76,8 +76,7 @@ public class S3PathSyncer
             .ToArray();
 
         using var blobManager =
-            new BlobManager(new FileFingerprintManager(new MessagePackFileFingerprintStore(bucket), new StreamFingerprinter()))
-                as IBlobManager;
+            new BlobManager(new FileFingerprintManager(new MessagePackFileFingerprintStore(bucket), new StreamFingerprinter()));
         try
         {
             using var awsManager = AwsManagerFactory.Create(bucket, config);

@@ -30,9 +30,10 @@ namespace AwsSyncer.AWS;
 
 public class S3PutBase
 {
-    protected readonly IAmazonS3 AmazonS3;
+    protected IAmazonS3 AmazonS3 { get; }
 
-    protected S3PutBase(IAmazonS3 amazonS3) => AmazonS3 = amazonS3 ?? throw new ArgumentNullException(nameof(amazonS3));
+    protected S3PutBase(IAmazonS3 amazonS3) =>
+        AmazonS3 = amazonS3 ?? throw new ArgumentNullException(nameof(amazonS3));
 
     protected async Task<PutObjectResponse> PutAsync(IS3PutRequest request, CancellationToken cancellationToken)
     {

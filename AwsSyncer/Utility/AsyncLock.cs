@@ -53,7 +53,7 @@ public sealed class AsyncLock : IDisposable
                 return;
             }
 
-            pending = _pending.ToArray();
+            pending = [.. _pending];
             _pending.Clear();
 
             _pending = null;

@@ -27,8 +27,7 @@ public sealed class ByteArrayComparer : IEqualityComparer<byte[]>
 
     public int GetHashCode(byte[] obj)
     {
-        if (obj == null)
-            throw new ArgumentNullException(nameof(obj));
+        ArgumentNullException.ThrowIfNull(obj);
 
         var hash = 1422328907;
         foreach (var e in obj)

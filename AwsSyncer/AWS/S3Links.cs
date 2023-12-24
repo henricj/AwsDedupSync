@@ -32,17 +32,11 @@ using AwsSyncer.Utility;
 
 namespace AwsSyncer.AWS;
 
-public sealed class S3Links : S3PutBase
+public sealed class S3Links(IAmazonS3 amazonS3, IPathManager pathManager, S3StorageClass s3StorageClass)
+    : S3PutBase(amazonS3)
 {
-    readonly IPathManager _pathManager;
-    readonly S3StorageClass _s3StorageClass;
-
-    public S3Links(IAmazonS3 amazonS3, IPathManager pathManager, S3StorageClass s3StorageClass)
-        : base(amazonS3)
-    {
-        _pathManager = pathManager ?? throw new ArgumentNullException(nameof(pathManager));
-        _s3StorageClass = s3StorageClass ?? throw new ArgumentNullException(nameof(s3StorageClass));
-    }
+    readonly IPathManager _pathManager = pathManager ?? throw new ArgumentNullException(nameof(pathManager));
+    readonly S3StorageClass _s3StorageClass = s3StorageClass ?? throw new ArgumentNullException(nameof(s3StorageClass));
 
     public async Task<IReadOnlyDictionary<string, string>> ListAsync(string name, CancellationToken cancellationToken)
     {
@@ -79,12 +73,7 @@ public sealed class S3Links : S3PutBase
     {
         var link = '/' + _pathManager.GetBlobPath(fileFingerprint);
 
-        byte[] md5Digest;
-
-        using (var md5 = MD5.Create())
-        {
-            md5Digest = md5.ComputeHash(Encoding.UTF8.GetBytes(link));
-        }
+        var md5Digest = MD5.HashData(Encoding.UTF8.GetBytes(link));
 
         var etag = S3Util.ComputeS3Etag(md5Digest);
 
@@ -143,11 +132,11 @@ public sealed class S3Links : S3PutBase
         FileFingerprint FileFingerprint { get; }
     }
 
-    class CreateLinkRequest : S3PutRequest, ICreateLinkRequest
+    sealed class CreateLinkRequest : S3PutRequest, ICreateLinkRequest
     {
-        public string Collection { get; set; }
-        public string RelativePath { get; set; }
-        public string BlobLink { get; set; }
-        public FileFingerprint FileFingerprint { get; set; }
+        public string Collection { get; init; }
+        public string RelativePath { get; init; }
+        public string BlobLink { get; init; }
+        public FileFingerprint FileFingerprint { get; init; }
     }
 }

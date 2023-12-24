@@ -43,21 +43,19 @@ public interface IFileFingerprintManager : IDisposable
         CancellationToken cancellationToken);
 }
 
-public sealed class FileFingerprintManager : IFileFingerprintManager
+public sealed class FileFingerprintManager(IFileFingerprintStore fileFingerprintStore, IStreamFingerprinter fingerprinter)
+    : IFileFingerprintManager
 {
     const int FlushCount = 1024;
 
     //static readonly TimeSpan FlushInterval = TimeSpan.FromMinutes(10);
-    readonly IFileFingerprintStore _blobPathStore;
+    readonly IFileFingerprintStore _blobPathStore = fileFingerprintStore
+        ?? throw new ArgumentNullException(nameof(fileFingerprintStore));
 
-    readonly IStreamFingerprinter _fingerprinter;
+    readonly IStreamFingerprinter _fingerprinter = fingerprinter
+        ?? throw new ArgumentNullException(nameof(fingerprinter));
+
     IReadOnlyDictionary<string, FileFingerprint> _previouslyCachedFileFingerprints;
-
-    public FileFingerprintManager(IFileFingerprintStore fileFingerprintStore, IStreamFingerprinter fingerprinter)
-    {
-        _blobPathStore = fileFingerprintStore ?? throw new ArgumentNullException(nameof(fileFingerprintStore));
-        _fingerprinter = fingerprinter ?? throw new ArgumentNullException(nameof(fingerprinter));
-    }
 
     public void Dispose()
     {
@@ -244,7 +242,7 @@ public sealed class FileFingerprintManager : IFileFingerprintManager
                 {
                     foreach (var filename in filenames)
                     {
-                        if (null == filename)
+                        if (filename is null)
                             continue;
 
                         var cachedBlob = GetCachedFileFingerprint(filename.FileInfo);

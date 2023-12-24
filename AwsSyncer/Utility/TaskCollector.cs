@@ -30,7 +30,7 @@ public class TaskCollector
 {
     public static readonly TaskCollector Default = new();
     readonly object _lock = new();
-    readonly Dictionary<Task, string> _tasks = new();
+    readonly Dictionary<Task, string> _tasks = [];
 
     //[Conditional("DEBUG")]
     public void Add(Task task, string description)
@@ -59,7 +59,7 @@ public class TaskCollector
         lock (_lock)
         {
             if (_tasks.Count > 0)
-                tasks = _tasks.ToArray();
+                tasks = [.. _tasks];
         }
 
         if (null == tasks || 0 == tasks.Length)

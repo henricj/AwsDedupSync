@@ -34,7 +34,7 @@ namespace AwsSyncer.FingerprintStore;
 
 public sealed class BsonFileFingerprintStore : IFileFingerprintStore
 {
-    static readonly Dictionary<string, FileFingerprint> EmptyFileFingerprints = new();
+    static readonly Dictionary<string, FileFingerprint> EmptyFileFingerprints = [];
     readonly DirectoryInfo _bsonDirectory;
     readonly FileSequence _fileSequence;
     readonly AsyncLock _lock = new();
@@ -98,7 +98,7 @@ public sealed class BsonFileFingerprintStore : IFileFingerprintStore
     {
         using (await _lock.LockAsync(cancellationToken).ConfigureAwait(false))
         {
-            if (null == _jsonWriter)
+            if (_jsonWriter is null)
                 return;
 
             await _jsonWriter.FlushAsync(cancellationToken).ConfigureAwait(false);
@@ -219,7 +219,7 @@ public sealed class BsonFileFingerprintStore : IFileFingerprintStore
                         {
                             var fileFingerprint = await ReadFileFingerprintAsync(br, cancellationToken).ConfigureAwait(false);
 
-                            if (null == fileFingerprint)
+                            if (fileFingerprint is null)
                             {
                                 needRebuild = true;
                                 break;
@@ -296,8 +296,8 @@ public sealed class BsonFileFingerprintStore : IFileFingerprintStore
         {
             if (reader.TokenType == JsonToken.EndObject)
             {
-                if (null == path || !modified.HasValue || !size.HasValue ||
-                    null == md5 || null == sha256 || null == sha3_512)
+                if (path is null || !modified.HasValue || !size.HasValue ||
+                    md5 is null || sha256 is null || sha3_512 is null)
                     throw new JsonReaderException("Missing required property");
 
                 var fingerprint = new BlobFingerprint(size.Value, sha3_512, sha256, md5);
@@ -437,20 +437,17 @@ public sealed class BsonFileFingerprintStore : IFileFingerprintStore
     {
         Debug.WriteLine("BsonFileFingerprintStore.OpenWriter()");
 
-        if (null == _bsonFile)
+        if (_bsonFile is null)
         {
             var fi = _fileSequence.NewFile();
             _bsonFile = OpenBsonFileForWrite(fi);
         }
 
-        if (null == _encodeStream)
-            _encodeStream = new(_bsonFile, CompressionLevel.Optimal);
+        _encodeStream ??= new(_bsonFile, CompressionLevel.Optimal);
 
-        if (null == _bufferStream)
-            _bufferStream = new BufferedStream(_encodeStream, 512 * 1024);
+        _bufferStream ??= new BufferedStream(_encodeStream, 512 * 1024);
 
-        if (null == _jsonWriter)
-            _jsonWriter = new(_bufferStream) { DateTimeKindHandling = DateTimeKind.Utc };
+        _jsonWriter ??= new(_bufferStream) { DateTimeKindHandling = DateTimeKind.Utc };
     }
 
     void CloseWriter()

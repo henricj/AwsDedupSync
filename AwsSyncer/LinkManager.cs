@@ -66,14 +66,14 @@ public class LinkManager
 
         await routeBlock.Completion.ConfigureAwait(false);
 
-        Debug.WriteLine("S3LinkCreateor.CreateLinkAsync() routeBlock is done");
+        Debug.WriteLine("S3LinkCreator.CreateLinkAsync() routeBlock is done");
 
         foreach (var block in collectionBlocks.Values)
             block.Complete();
 
         await Task.WhenAll(tasks).ConfigureAwait(false);
 
-        Debug.WriteLine("S3LinkCreateor.CreateLinkAsync() all link blocks are done");
+        Debug.WriteLine("S3LinkCreator.CreateLinkAsync() all link blocks are done");
     }
 
     static async Task CreateLinksBlockAsync(IAwsManager awsManager,
@@ -113,7 +113,7 @@ public class LinkManager
 
                 relativePath = relativePath.Replace('\\', '/');
 
-                if (relativePath.StartsWith("/", StringComparison.Ordinal))
+                if (relativePath.StartsWith('/'))
                     throw new InvalidOperationException($"Create link for invalid path {relativePath}");
 
                 links.TryGetValue(relativePath, out var eTag);

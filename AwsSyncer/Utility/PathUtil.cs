@@ -54,7 +54,7 @@ public static class PathUtil
         var relativeUri = fromUri.MakeRelativeUri(toUri);
         var relativePath = Uri.UnescapeDataString(relativeUri.ToString());
 
-        if (toUri.Scheme.ToUpperInvariant() == "FILE")
+        if (string.Equals(toUri.Scheme.ToUpperInvariant(), "FILE", StringComparison.OrdinalIgnoreCase))
             relativePath = relativePath.Replace(Path.AltDirectorySeparatorChar, Path.DirectorySeparatorChar);
 
         return relativePath;

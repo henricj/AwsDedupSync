@@ -41,20 +41,17 @@ public sealed class BlobFingerprint : IEquatable<BlobFingerprint>
         if (size < 0)
             throw new ArgumentOutOfRangeException(nameof(size), size, "size cannot be negative");
 
-        if (null == sha3_512)
-            throw new ArgumentNullException(nameof(sha3_512));
+        ArgumentNullException.ThrowIfNull(sha3_512);
 
         if (sha3_512.Length != 512 / 8)
             throw new ArgumentException("invalid SHA3-512 length", nameof(sha3_512));
 
-        if (null == sha2_256)
-            throw new ArgumentNullException(nameof(sha2_256));
+        ArgumentNullException.ThrowIfNull(sha2_256);
 
         if (sha2_256.Length != 256 / 8)
             throw new ArgumentException("invalid SHA2-256 length", nameof(sha2_256));
 
-        if (null == md5)
-            throw new ArgumentNullException(nameof(md5));
+        ArgumentNullException.ThrowIfNull(md5);
 
         if (md5.Length != 128 / 8)
             throw new ArgumentException("invalid MD5 length", nameof(md5));
