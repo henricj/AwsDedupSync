@@ -21,70 +21,69 @@
 using System;
 using System.Runtime.Serialization;
 
-namespace AwsSyncer.Types
+namespace AwsSyncer.Types;
+
+[DataContract]
+public sealed class FileFingerprint : IEquatable<FileFingerprint>
 {
-    [DataContract]
-    public sealed class FileFingerprint : IEquatable<FileFingerprint>
+    [DataMember(Order = 0)] public string FullFilePath { get; }
+
+    [DataMember(Order = 1)] public DateTime LastModifiedUtc { get; }
+
+    [DataMember(Order = 2)] public BlobFingerprint Fingerprint { get; }
+
+    [IgnoreDataMember] public bool WasCached { get; } = true;
+
+    public FileFingerprint(string fullFilePath, DateTime lastModifiedUtc, BlobFingerprint fingerprint)
     {
-        public FileFingerprint(string fullFilePath, DateTime lastModifiedUtc, BlobFingerprint fingerprint)
-        {
-            Fingerprint = fingerprint ?? throw new ArgumentNullException(nameof(fingerprint));
-            FullFilePath = fullFilePath ?? throw new ArgumentNullException(nameof(fullFilePath));
-            LastModifiedUtc = lastModifiedUtc;
-        }
-
-        public FileFingerprint(string fullFilePath, DateTime lastModifiedUtc, BlobFingerprint fingerprint, bool wasCached)
-        {
-            Fingerprint = fingerprint ?? throw new ArgumentNullException(nameof(fingerprint));
-            WasCached = wasCached;
-            FullFilePath = fullFilePath ?? throw new ArgumentNullException(nameof(fullFilePath));
-            LastModifiedUtc = lastModifiedUtc;
-        }
-
-        [DataMember(Order = 0)] public string FullFilePath { get; }
-
-        [DataMember(Order = 1)] public DateTime LastModifiedUtc { get; }
-
-        [DataMember(Order = 2)] public BlobFingerprint Fingerprint { get; }
-
-        [IgnoreDataMember] public bool WasCached { get; } = true;
-
-        public bool Equals(FileFingerprint other)
-        {
-            if (other is null)
-                return false;
-            if (ReferenceEquals(this, other))
-                return true;
-
-            return string.Equals(FullFilePath, other.FullFilePath, StringComparison.OrdinalIgnoreCase)
-                   && LastModifiedUtc.Equals(other.LastModifiedUtc)
-                   && Fingerprint.Equals(other.Fingerprint);
-        }
-
-        public override bool Equals(object obj)
-        {
-            if (obj is null)
-                return false;
-            if (ReferenceEquals(this, obj))
-                return true;
-
-            return obj is FileFingerprint ff && Equals(ff);
-        }
-
-        public override int GetHashCode()
-        {
-            unchecked
-            {
-                var hashCode = StringComparer.OrdinalIgnoreCase.GetHashCode(FullFilePath);
-                hashCode = (hashCode * 397) ^ LastModifiedUtc.GetHashCode();
-                hashCode = (hashCode * 397) ^ Fingerprint.GetHashCode();
-                hashCode = (hashCode * 397) ^ WasCached.GetHashCode();
-                return hashCode;
-            }
-        }
-
-        public static bool operator ==(FileFingerprint left, FileFingerprint right) => Equals(left, right);
-
-        public static bool operator !=(FileFingerprint left, FileFingerprint right) => !Equals(left, right);
+        Fingerprint = fingerprint ?? throw new ArgumentNullException(nameof(fingerprint));
+        FullFilePath = fullFilePath ?? throw new ArgumentNullException(nameof(fullFilePath));
+        LastModifiedUtc = lastModifiedUtc;
     }
+
+    public FileFingerprint(string fullFilePath, DateTime lastModifiedUtc, BlobFingerprint fingerprint, bool wasCached)
+    {
+        Fingerprint = fingerprint ?? throw new ArgumentNullException(nameof(fingerprint));
+        WasCached = wasCached;
+        FullFilePath = fullFilePath ?? throw new ArgumentNullException(nameof(fullFilePath));
+        LastModifiedUtc = lastModifiedUtc;
+    }
+
+    public bool Equals(FileFingerprint other)
+    {
+        if (other is null)
+            return false;
+        if (ReferenceEquals(this, other))
+            return true;
+
+        return string.Equals(FullFilePath, other.FullFilePath, StringComparison.OrdinalIgnoreCase)
+            && LastModifiedUtc.Equals(other.LastModifiedUtc)
+            && Fingerprint.Equals(other.Fingerprint);
+    }
+
+    public override bool Equals(object obj)
+    {
+        if (obj is null)
+            return false;
+        if (ReferenceEquals(this, obj))
+            return true;
+
+        return obj is FileFingerprint ff && Equals(ff);
+    }
+
+    public override int GetHashCode()
+    {
+        unchecked
+        {
+            var hashCode = StringComparer.OrdinalIgnoreCase.GetHashCode(FullFilePath);
+            hashCode = (hashCode * 397) ^ LastModifiedUtc.GetHashCode();
+            hashCode = (hashCode * 397) ^ Fingerprint.GetHashCode();
+            hashCode = (hashCode * 397) ^ WasCached.GetHashCode();
+            return hashCode;
+        }
+    }
+
+    public static bool operator ==(FileFingerprint left, FileFingerprint right) => Equals(left, right);
+
+    public static bool operator !=(FileFingerprint left, FileFingerprint right) => !Equals(left, right);
 }

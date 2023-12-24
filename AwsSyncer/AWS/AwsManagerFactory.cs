@@ -21,20 +21,19 @@
 using Amazon.S3;
 using Microsoft.Extensions.Configuration;
 
-namespace AwsSyncer.AWS
+namespace AwsSyncer.AWS;
+
+public static class AwsManagerFactory
 {
-    public static class AwsManagerFactory
+    public static IAwsManager Create(string bucket, IConfiguration awsConfig)
     {
-        public static IAwsManager Create(string bucket, IConfiguration awsConfig)
-        {
-            var options = awsConfig.GetAWSOptions();
-            var amazonS3 = options.CreateServiceClient<IAmazonS3>();
+        var options = awsConfig.GetAWSOptions();
+        var amazonS3 = options.CreateServiceClient<IAmazonS3>();
 
-            var region = amazonS3.Config.RegionEndpoint.DisplayName;
+        var region = amazonS3.Config.RegionEndpoint.DisplayName;
 
-            var pathManager = new PathManager(region, bucket);
+        var pathManager = new PathManager(region, bucket);
 
-            return new AwsManager(awsConfig, amazonS3, pathManager);
-        }
+        return new AwsManager(awsConfig, amazonS3, pathManager);
     }
 }

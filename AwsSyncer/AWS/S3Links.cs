@@ -30,128 +30,124 @@ using Amazon.S3.Model;
 using AwsSyncer.Types;
 using AwsSyncer.Utility;
 
-namespace AwsSyncer.AWS
+namespace AwsSyncer.AWS;
+
+public sealed class S3Links : S3PutBase
 {
-    public sealed class S3Links : S3PutBase
+    readonly IPathManager _pathManager;
+    readonly S3StorageClass _s3StorageClass;
+
+    public S3Links(IAmazonS3 amazonS3, IPathManager pathManager, S3StorageClass s3StorageClass)
+        : base(amazonS3)
     {
-        readonly IPathManager _pathManager;
-        readonly S3StorageClass _s3StorageClass;
+        _pathManager = pathManager ?? throw new ArgumentNullException(nameof(pathManager));
+        _s3StorageClass = s3StorageClass ?? throw new ArgumentNullException(nameof(s3StorageClass));
+    }
 
-        public S3Links(IAmazonS3 amazonS3, IPathManager pathManager, S3StorageClass s3StorageClass)
-            : base(amazonS3)
+    public async Task<IReadOnlyDictionary<string, string>> ListAsync(string name, CancellationToken cancellationToken)
+    {
+        var files = new Dictionary<string, string>();
+
+        var request = new ListObjectsV2Request
         {
-            _pathManager = pathManager ?? throw new ArgumentNullException(nameof(pathManager));
-            _s3StorageClass = s3StorageClass ?? throw new ArgumentNullException(nameof(s3StorageClass));
+            BucketName = _pathManager.Bucket,
+            Prefix = _pathManager.GetTreeNamePrefix(name)
+        };
+
+        for (;;)
+        {
+            var response = await AmazonS3.ListObjectsV2Async(request, cancellationToken).ConfigureAwait(false);
+
+            foreach (var s3Object in response.S3Objects)
+            {
+                var key = _pathManager.GetKeyFromTreeNamePath(name, s3Object.Key);
+
+                files[key] = s3Object.ETag;
+            }
+
+            if (!response.IsTruncated)
+                return files;
+
+            request.ContinuationToken = response.NextContinuationToken;
+        }
+    }
+
+    [SuppressMessage("Security", "CA5351:Do Not Use Broken Cryptographic Algorithms",
+        Justification = "MD5 is required for external API compatibility.")]
+    public ICreateLinkRequest BuildCreateLinkRequest(string collection, string relativePath, FileFingerprint fileFingerprint,
+        string existingETag)
+    {
+        var link = '/' + _pathManager.GetBlobPath(fileFingerprint);
+
+        byte[] md5Digest;
+
+        using (var md5 = MD5.Create())
+        {
+            md5Digest = md5.ComputeHash(Encoding.UTF8.GetBytes(link));
         }
 
-        public async Task<IReadOnlyDictionary<string, string>> ListAsync(string name, CancellationToken cancellationToken)
+        var etag = S3Util.ComputeS3Etag(md5Digest);
+
+        if (!string.IsNullOrEmpty(existingETag))
         {
-            var files = new Dictionary<string, string>();
+            var match = string.Equals(etag, existingETag, StringComparison.OrdinalIgnoreCase);
 
-            var request = new ListObjectsV2Request
+            if (match)
             {
-                BucketName = _pathManager.Bucket,
-                Prefix = _pathManager.GetTreeNamePrefix(name)
-            };
+                //Debug.WriteLine($"{collection} \"{relativePath}\" already exists and equals {link}");
 
-            for (;;)
-            {
-                var response = await AmazonS3.ListObjectsV2Async(request, cancellationToken).ConfigureAwait(false);
-
-                foreach (var s3Object in response.S3Objects)
-                {
-                    var key = _pathManager.GetKeyFromTreeNamePath(name, s3Object.Key);
-
-                    files[key] = s3Object.ETag;
-                }
-
-                if (!response.IsTruncated)
-                    return files;
-
-                request.ContinuationToken = response.NextContinuationToken;
+                return null;
             }
         }
 
-        [SuppressMessage("Security", "CA5351:Do Not Use Broken Cryptographic Algorithms",
-            Justification = "MD5 is required for external API compatibility.")]
-        public ICreateLinkRequest BuildCreateLinkRequest(string collection, string relativePath, FileFingerprint fileFingerprint,
-            string existingETag)
+        var md5DigestString = Convert.ToBase64String(md5Digest);
+
+        var treeKey = _pathManager.GetTreeNamePath(collection, relativePath);
+
+        var request = new PutObjectRequest
         {
-            var link = '/' + _pathManager.GetBlobPath(fileFingerprint);
+            BucketName = _pathManager.Bucket,
+            ContentBody = link,
+            Key = treeKey,
+            MD5Digest = md5DigestString,
+            WebsiteRedirectLocation = link,
+            ContentType = MimeDetector.GetMimeType(fileFingerprint.FullFilePath),
+            StorageClass = _s3StorageClass,
+            Headers = { ["x-amz-meta-lastModified"] = fileFingerprint.LastModifiedUtc.ToString("O") }
+        };
 
-            byte[] md5Digest;
-
-            using (var md5 = MD5.Create())
-            {
-                md5Digest = md5.ComputeHash(Encoding.UTF8.GetBytes(link));
-            }
-
-            var etag = S3Util.ComputeS3Etag(md5Digest);
-
-            if (!string.IsNullOrEmpty(existingETag))
-            {
-                var match = string.Equals(etag, existingETag, StringComparison.OrdinalIgnoreCase);
-
-                if (match)
-                {
-                    //Debug.WriteLine($"{collection} \"{relativePath}\" already exists and equals {link}");
-
-                    return null;
-                }
-            }
-
-            var md5DigestString = Convert.ToBase64String(md5Digest);
-
-            var treeKey = _pathManager.GetTreeNamePath(collection, relativePath);
-
-            var request = new PutObjectRequest
-            {
-                BucketName = _pathManager.Bucket,
-                ContentBody = link,
-                Key = treeKey,
-                MD5Digest = md5DigestString,
-                WebsiteRedirectLocation = link,
-                ContentType = MimeDetector.GetMimeType(fileFingerprint.FullFilePath),
-                StorageClass = _s3StorageClass,
-                Headers =
-                {
-                    ["x-amz-meta-lastModified"] = fileFingerprint.LastModifiedUtc.ToString("O")
-                }
-            };
-
-            return new CreateLinkRequest
-            {
-                Collection = collection,
-                RelativePath = relativePath,
-                BlobLink = link,
-                FileFingerprint = fileFingerprint,
-                Request = request,
-                ETag = etag
-            };
-        }
-
-        public async Task CreateLinkAsync(ICreateLinkRequest createLinkRequest, CancellationToken cancellationToken)
+        return new CreateLinkRequest
         {
-            var request = (S3PutRequest)createLinkRequest;
+            Collection = collection,
+            RelativePath = relativePath,
+            BlobLink = link,
+            FileFingerprint = fileFingerprint,
+            Request = request,
+            ETag = etag
+        };
+    }
 
-            await PutAsync(request, cancellationToken);
-        }
+    public async Task CreateLinkAsync(ICreateLinkRequest createLinkRequest, CancellationToken cancellationToken)
+    {
+        var request = (S3PutRequest)createLinkRequest;
 
-        public interface ICreateLinkRequest
-        {
-            string Collection { get; }
-            string RelativePath { get; }
-            string BlobLink { get; }
-            string ETag { get; }
-            FileFingerprint FileFingerprint { get; }
-        }
+        await PutAsync(request, cancellationToken);
+    }
 
-        class CreateLinkRequest : S3PutRequest, ICreateLinkRequest
-        {
-            public string Collection { get; set; }
-            public string RelativePath { get; set; }
-            public string BlobLink { get; set; }
-            public FileFingerprint FileFingerprint { get; set; }
-        }
+    public interface ICreateLinkRequest
+    {
+        string Collection { get; }
+        string RelativePath { get; }
+        string BlobLink { get; }
+        string ETag { get; }
+        FileFingerprint FileFingerprint { get; }
+    }
+
+    class CreateLinkRequest : S3PutRequest, ICreateLinkRequest
+    {
+        public string Collection { get; set; }
+        public string RelativePath { get; set; }
+        public string BlobLink { get; set; }
+        public FileFingerprint FileFingerprint { get; set; }
     }
 }

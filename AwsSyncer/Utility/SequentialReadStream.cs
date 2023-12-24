@@ -23,105 +23,93 @@ using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace AwsSyncer.Utility
+namespace AwsSyncer.Utility;
+
+public class SequentialReadStream : Stream
 {
-    public class SequentialReadStream : Stream
+    readonly Stream _baseStream;
+    long _position;
+
+    public override bool CanRead => _baseStream.CanRead;
+    public override bool CanSeek => false;
+    public override bool CanWrite => true;
+    public override long Length => _baseStream.Length;
+
+    public override long Position
     {
-        readonly Stream _baseStream;
-        long _position;
-
-        public SequentialReadStream(Stream baseStream)
-        {
-            _baseStream = baseStream ?? throw new ArgumentNullException(nameof(baseStream));
-        }
-
-        public override bool CanRead => _baseStream.CanRead;
-        public override bool CanSeek => false;
-        public override bool CanWrite => true;
-        public override long Length => _baseStream.Length;
-
-        public override long Position
-        {
-            get => _position;
-            set => throw new NotSupportedException();
-        }
-
-        public override void Flush()
-        {
-            _baseStream.Flush();
-        }
-
-        public override Task FlushAsync(CancellationToken cancellationToken) => _baseStream.FlushAsync(cancellationToken);
-
-        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
-
-        public override void SetLength(long value)
-        {
-            throw new NotSupportedException();
-        }
-
-        public override int Read(byte[] buffer, int offset, int count)
-        {
-            var length = _baseStream.Read(buffer, offset, count);
-
-            if (length > 0)
-                _position += length;
-
-            return length;
-        }
-
-        public override IAsyncResult BeginRead(byte[] buffer, int offset, int count, AsyncCallback callback, object state) =>
-            _baseStream.BeginRead(buffer, offset, count, callback, state);
-
-        public override int EndRead(IAsyncResult asyncResult)
-        {
-            var length = _baseStream.EndRead(asyncResult);
-
-            if (length > 0)
-                _position += length;
-
-            return length;
-        }
-
-        public override async Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken)
-        {
-            var length = await _baseStream.ReadAsync(buffer.AsMemory(offset, count), cancellationToken).ConfigureAwait(false);
-
-            if (length > 0)
-                _position += length;
-
-            return length;
-        }
-
-        public override int Read(Span<byte> buffer)
-        {
-            var length = base.Read(buffer);
-
-            if (length > 0)
-                _position += length;
-
-            return length;
-        }
-
-        public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
-        {
-            var length = await base.ReadAsync(buffer, cancellationToken).ConfigureAwait(false);
-
-            if (length > 0)
-                _position += length;
-
-            return length;
-        }
-
-        public override void Write(byte[] buffer, int offset, int count)
-        {
-            throw new NotSupportedException();
-        }
-
-        public override Task WriteAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken) =>
-            throw new NotSupportedException();
-
-        public override ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken = default) =>
-            throw new NotSupportedException();
+        get => _position;
+        set => throw new NotSupportedException();
     }
+
+    public SequentialReadStream(Stream baseStream) =>
+        _baseStream = baseStream ?? throw new ArgumentNullException(nameof(baseStream));
+
+    public override void Flush() => _baseStream.Flush();
+
+    public override Task FlushAsync(CancellationToken cancellationToken) => _baseStream.FlushAsync(cancellationToken);
+
+    public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+
+    public override void SetLength(long value) => throw new NotSupportedException();
+
+    public override int Read(byte[] buffer, int offset, int count)
+    {
+        var length = _baseStream.Read(buffer, offset, count);
+
+        if (length > 0)
+            _position += length;
+
+        return length;
+    }
+
+    public override IAsyncResult BeginRead(byte[] buffer, int offset, int count, AsyncCallback callback, object state) =>
+        _baseStream.BeginRead(buffer, offset, count, callback, state);
+
+    public override int EndRead(IAsyncResult asyncResult)
+    {
+        var length = _baseStream.EndRead(asyncResult);
+
+        if (length > 0)
+            _position += length;
+
+        return length;
+    }
+
+    public override async Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken)
+    {
+        var length = await _baseStream.ReadAsync(buffer.AsMemory(offset, count), cancellationToken).ConfigureAwait(false);
+
+        if (length > 0)
+            _position += length;
+
+        return length;
+    }
+
+    public override int Read(Span<byte> buffer)
+    {
+        var length = base.Read(buffer);
+
+        if (length > 0)
+            _position += length;
+
+        return length;
+    }
+
+    public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
+    {
+        var length = await base.ReadAsync(buffer, cancellationToken).ConfigureAwait(false);
+
+        if (length > 0)
+            _position += length;
+
+        return length;
+    }
+
+    public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+
+    public override Task WriteAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken) =>
+        throw new NotSupportedException();
+
+    public override ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken = default) =>
+        throw new NotSupportedException();
 }

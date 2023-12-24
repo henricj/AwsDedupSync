@@ -23,45 +23,41 @@ using System.Collections.Generic;
 using System.Linq;
 using Microsoft.AspNetCore.WebUtilities;
 
-namespace AwsSyncer.AWS
+namespace AwsSyncer.AWS;
+
+public static class S3Util
 {
-    public static class S3Util
+    public static IReadOnlyCollection<char> KeyAlphabet { get; }
+
+    static S3Util() => KeyAlphabet = DiscoverAlphabet();
+
+    public static string ComputeS3Etag(byte[] md5Digest) =>
+        '"' + BitConverter.ToString(md5Digest).Replace("-", string.Empty) + '"';
+
+    static char[] DiscoverAlphabet()
     {
-        static S3Util()
+        var buffer = new byte[3];
+        var alphabet = new HashSet<char>();
+
+        for (var i = (int)byte.MinValue; i <= byte.MaxValue; ++i)
         {
-            KeyAlphabet = DiscoverAlphabet();
+            buffer[0] = (byte)i;
+
+            var encoded = S3EncodeKey(buffer);
+
+            foreach (var ch in encoded)
+                alphabet.Add(ch);
         }
 
-        public static IReadOnlyCollection<char> KeyAlphabet { get; }
+        //Debug.WriteLine($"alphabet has {alphabet.Count} letters");
 
-        public static string ComputeS3Etag(byte[] md5Digest) =>
-            '"' + BitConverter.ToString(md5Digest).Replace("-", string.Empty) + '"';
+        if (64 != alphabet.Count)
+            return null;
 
-        static char[] DiscoverAlphabet()
-        {
-            var buffer = new byte[3];
-            var alphabet = new HashSet<char>();
-
-            for (var i = (int)byte.MinValue; i <= byte.MaxValue; ++i)
-            {
-                buffer[0] = (byte)i;
-
-                var encoded = S3EncodeKey(buffer);
-
-                foreach (var ch in encoded)
-                    alphabet.Add(ch);
-            }
-
-            //Debug.WriteLine($"alphabet has {alphabet.Count} letters");
-
-            if (64 != alphabet.Count)
-                return null;
-
-            return alphabet.OrderBy(c => c).ToArray();
-        }
-
-        public static string S3EncodeKey(byte[] value) => Base64UrlTextEncoder.Encode(value);
-
-        public static byte[] DecodeKey(string value) => Base64UrlTextEncoder.Decode(value);
+        return alphabet.OrderBy(c => c).ToArray();
     }
+
+    public static string S3EncodeKey(byte[] value) => Base64UrlTextEncoder.Encode(value);
+
+    public static byte[] DecodeKey(string value) => Base64UrlTextEncoder.Decode(value);
 }

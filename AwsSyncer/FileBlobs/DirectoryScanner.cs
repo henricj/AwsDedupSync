@@ -28,68 +28,67 @@ using System.Threading.Tasks.Dataflow;
 using AwsSyncer.Types;
 using AwsSyncer.Utility;
 
-namespace AwsSyncer.FileBlobs
+namespace AwsSyncer.FileBlobs;
+
+public static class DirectoryScanner
 {
-    public static class DirectoryScanner
+    public static Task GenerateAnnotatedPathsAsync(IEnumerable<CollectionPath> paths,
+        Func<FileInfo, bool> filePredicate,
+        ITargetBlock<AnnotatedPath[]> filePathTargetBlock,
+        CancellationToken cancellationToken)
     {
-        public static Task GenerateAnnotatedPathsAsync(IEnumerable<CollectionPath> paths,
-            Func<FileInfo, bool> filePredicate,
-            ITargetBlock<AnnotatedPath[]> filePathTargetBlock,
-            CancellationToken cancellationToken)
-        {
-            var shuffleBlock = new TransformBlock<AnnotatedPath[], AnnotatedPath[]>(
-                filenames =>
-                {
-                    // Sequential names tend to fall into the same AWS S3 partition, so we
-                    // shuffle things around.
-                    RandomUtil.Shuffle(filenames);
-
-                    return filenames;
-                },
-                new ExecutionDataflowBlockOptions
-                    { CancellationToken = cancellationToken, MaxDegreeOfParallelism = Environment.ProcessorCount });
-
-            shuffleBlock.LinkTo(filePathTargetBlock, new DataflowLinkOptions { PropagateCompletion = true });
-
-            var batcher = new BatchBlock<AnnotatedPath>(2048,
-                new GroupingDataflowBlockOptions { CancellationToken = cancellationToken });
-
-            batcher.LinkTo(shuffleBlock, new DataflowLinkOptions
+        var shuffleBlock = new TransformBlock<AnnotatedPath[], AnnotatedPath[]>(
+            filenames =>
             {
-                PropagateCompletion = true
+                // Sequential names tend to fall into the same AWS S3 partition, so we
+                // shuffle things around.
+                RandomUtil.Shuffle(filenames);
+
+                return filenames;
+            },
+            new()
+            {
+                CancellationToken = cancellationToken,
+                MaxDegreeOfParallelism = Environment.ProcessorCount
             });
 
-            var scanTasks = paths
-                .Select<CollectionPath, Task>(path =>
-                    Task.Factory.StartNew(
-                        async () =>
+        shuffleBlock.LinkTo(filePathTargetBlock, new() { PropagateCompletion = true });
+
+        var batcher = new BatchBlock<AnnotatedPath>(2048,
+            new() { CancellationToken = cancellationToken });
+
+        batcher.LinkTo(shuffleBlock, new() { PropagateCompletion = true });
+
+        var scanTasks = paths
+            .Select<CollectionPath, Task>(path =>
+                Task.Factory.StartNew(
+                    async () =>
+                    {
+                        foreach (var file in PathUtil.ScanDirectory(path.Path, filePredicate))
                         {
-                            foreach (var file in PathUtil.ScanDirectory(path.Path, filePredicate))
-                            {
-                                if (cancellationToken.IsCancellationRequested)
-                                    break;
+                            if (cancellationToken.IsCancellationRequested)
+                                break;
 
-                                var relativePath = PathUtil.MakeRelativePath(path.Path, file.FullName);
+                            var relativePath = PathUtil.MakeRelativePath(path.Path, file.FullName);
 
-                                var annotatedPath = new AnnotatedPath(file, path.Collection ?? path.Path, relativePath);
+                            var annotatedPath = new AnnotatedPath(file, path.Collection ?? path.Path, relativePath);
 
-                                await batcher.SendAsync(annotatedPath, cancellationToken).ConfigureAwait(false);
-                            }
-                        },
-                        cancellationToken,
-                        TaskCreationOptions.DenyChildAttach | TaskCreationOptions.LongRunning |
-                        TaskCreationOptions.RunContinuationsAsynchronously,
-                        TaskScheduler.Default));
+                            await batcher.SendAsync(annotatedPath, cancellationToken).ConfigureAwait(false);
+                        }
+                    },
+                    cancellationToken,
+                    TaskCreationOptions.DenyChildAttach | TaskCreationOptions.LongRunning |
+                    TaskCreationOptions.RunContinuationsAsynchronously,
+                    TaskScheduler.Default));
 
-            var task = Task.WhenAll(scanTasks);
+        var task = Task.WhenAll(scanTasks);
 
-            var localFilePathTargetBlock = (ITargetBlock<AnnotatedPath>)batcher;
+        var localFilePathTargetBlock = (ITargetBlock<AnnotatedPath>)batcher;
 
-            var completeTask = task.ContinueWith(_ => localFilePathTargetBlock.Complete(), cancellationToken);
+        var completeTask = task.ContinueWith(_ => localFilePathTargetBlock.Complete(), cancellationToken);
 
-            TaskCollector.Default.Add(completeTask, "GenerateAnnotatedPathsAsync");
+        TaskCollector.Default.Add(completeTask, "GenerateAnnotatedPathsAsync");
 
-            return task;
-        }
+        return task;
     }
 }

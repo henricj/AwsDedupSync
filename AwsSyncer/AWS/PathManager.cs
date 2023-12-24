@@ -22,115 +22,114 @@ using System;
 using AwsSyncer.Types;
 using AwsSyncer.Utility;
 
-namespace AwsSyncer.AWS
+namespace AwsSyncer.AWS;
+
+public interface IPathManager
 {
-    public interface IPathManager
+    string Bucket { get; }
+    string Region { get; }
+    string BlobPrefix { get; }
+    string TreePrefix { get; }
+
+    string GetBlobPath(FileFingerprint fileFingerprint);
+    byte[] GetKeyFromBlobPath(string blobPath);
+
+    string GetTreeNamePrefix(string name);
+    string GetTreeNamePath(string name, string key);
+    string GetKeyFromTreeNamePath(string name, string treeNamePath);
+}
+
+public class PathManager : IPathManager
+{
+    string _blobPrefix = "b/";
+    string _treePrefix = "t/";
+
+    public PathManager(string region, string bucket)
     {
-        string Bucket { get; }
-        string Region { get; }
-        string BlobPrefix { get; }
-        string TreePrefix { get; }
+        if (region == null)
+            throw new ArgumentNullException(nameof(region));
+        if (string.IsNullOrWhiteSpace(bucket))
+            throw new ArgumentException("Argument is null or whitespace", nameof(bucket));
 
-        string GetBlobPath(FileFingerprint fileFingerprint);
-        byte[] GetKeyFromBlobPath(string blobPath);
-
-        string GetTreeNamePrefix(string name);
-        string GetTreeNamePath(string name, string key);
-        string GetKeyFromTreeNamePath(string name, string treeNamePath);
+        Region = region;
+        Bucket = bucket;
     }
 
-    public class PathManager : IPathManager
+    public string BlobPrefix
     {
-        string _blobPrefix = "b/";
-        string _treePrefix = "t/";
-
-        public PathManager(string region, string bucket)
+        get => _blobPrefix;
+        set
         {
-            if (region == null)
-                throw new ArgumentNullException(nameof(region));
-            if (string.IsNullOrWhiteSpace(bucket))
-                throw new ArgumentException("Argument is null or whitespace", nameof(bucket));
+            if (string.IsNullOrWhiteSpace(value))
+                throw new ArgumentNullException(nameof(value));
 
-            Region = region;
-            Bucket = bucket;
+            _blobPrefix = value;
         }
+    }
 
-        public string BlobPrefix
+    public string TreePrefix
+    {
+        get => _treePrefix;
+
+        set
         {
-            get => _blobPrefix;
-            set
-            {
-                if (string.IsNullOrWhiteSpace(value))
-                    throw new ArgumentNullException(nameof(value));
+            if (string.IsNullOrWhiteSpace(value))
+                throw new ArgumentNullException(nameof(value));
 
-                _blobPrefix = value;
-            }
+            var normalized = PathUtil.NormalizeAsciiName(value);
+
+            if (!string.Equals(normalized, value, StringComparison.Ordinal))
+                throw new ArgumentException("non-normalized string");
+
+            _treePrefix = value;
         }
+    }
 
-        public string TreePrefix
-        {
-            get => _treePrefix;
+    public string Bucket { get; }
+    public string Region { get; }
 
-            set
-            {
-                if (string.IsNullOrWhiteSpace(value))
-                    throw new ArgumentNullException(nameof(value));
+    public string GetBlobPath(FileFingerprint fileFingerprint) => BlobPrefix + fileFingerprint.Fingerprint.Key();
 
-                var normalized = PathUtil.NormalizeAsciiName(value);
+    public byte[] GetKeyFromBlobPath(string blobPath)
+    {
+        if (string.IsNullOrEmpty(blobPath))
+            throw new ArgumentNullException(nameof(blobPath));
+        if (!blobPath.StartsWith(BlobPrefix, StringComparison.Ordinal))
+            throw new ArgumentException("path must start with " + BlobPrefix, nameof(blobPath));
 
-                if (!string.Equals(normalized, value, StringComparison.Ordinal))
-                    throw new ArgumentException("non-normalized string");
+        var key = blobPath[BlobPrefix.Length..];
 
-                _treePrefix = value;
-            }
-        }
+        if (string.IsNullOrEmpty(key))
+            return null;
 
-        public string Bucket { get; }
-        public string Region { get; }
+        PathUtil.RequireNormalizedAsciiName(key);
 
-        public string GetBlobPath(FileFingerprint fileFingerprint) => BlobPrefix + fileFingerprint.Fingerprint.Key();
+        return S3Util.DecodeKey(key);
+    }
 
-        public byte[] GetKeyFromBlobPath(string blobPath)
-        {
-            if (string.IsNullOrEmpty(blobPath))
-                throw new ArgumentNullException(nameof(blobPath));
-            if (!blobPath.StartsWith(BlobPrefix, StringComparison.Ordinal))
-                throw new ArgumentException("path must start with " + BlobPrefix, nameof(blobPath));
+    public string GetTreeNamePrefix(string name)
+    {
+        PathUtil.RequireNormalizedAsciiName(name);
 
-            var key = blobPath[BlobPrefix.Length..];
+        return TreePrefix + name + '/';
+    }
 
-            if (string.IsNullOrEmpty(key))
-                return null;
+    public string GetTreeNamePath(string name, string key) => GetTreeNamePrefix(name) + key;
 
-            PathUtil.RequireNormalizedAsciiName(key);
+    public string GetKeyFromTreeNamePath(string name, string treeNamePath)
+    {
+        if (string.IsNullOrEmpty(name))
+            throw new ArgumentNullException(nameof(name));
+        if (string.IsNullOrEmpty(treeNamePath))
+            throw new ArgumentNullException(nameof(treeNamePath));
 
-            return S3Util.DecodeKey(key);
-        }
+        var prefix = GetTreeNamePrefix(name);
 
-        public string GetTreeNamePrefix(string name)
-        {
-            PathUtil.RequireNormalizedAsciiName(name);
+        if (!treeNamePath.StartsWith(prefix, StringComparison.Ordinal))
+            throw new ArgumentException("path must start with " + prefix);
 
-            return TreePrefix + name + '/';
-        }
+        var key = treeNamePath[prefix.Length..];
 
-        public string GetTreeNamePath(string name, string key) => GetTreeNamePrefix(name) + key;
-
-        public string GetKeyFromTreeNamePath(string name, string treeNamePath)
-        {
-            if (string.IsNullOrEmpty(name))
-                throw new ArgumentNullException(nameof(name));
-            if (string.IsNullOrEmpty(treeNamePath))
-                throw new ArgumentNullException(nameof(treeNamePath));
-
-            var prefix = GetTreeNamePrefix(name);
-
-            if (!treeNamePath.StartsWith(prefix, StringComparison.Ordinal))
-                throw new ArgumentException("path must start with " + prefix);
-
-            var key = treeNamePath[prefix.Length..];
-
-            return key;
-        }
+        return key;
     }
 }

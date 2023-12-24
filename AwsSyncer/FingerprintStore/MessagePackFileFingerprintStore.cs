@@ -30,362 +30,360 @@ using AwsSyncer.Utility;
 using MessagePack;
 using MessagePack.Formatters;
 
-namespace AwsSyncer.FingerprintStore
+namespace AwsSyncer.FingerprintStore;
+
+public sealed partial class MessagePackFileFingerprintStore : IFileFingerprintStore
 {
-    public sealed partial class MessagePackFileFingerprintStore : IFileFingerprintStore
+    static readonly Dictionary<string, FileFingerprint> EmptyFileFingerprints = new();
+    static readonly IMessagePackFormatter<int> IntFormatter = MessagePackSerializer.DefaultOptions.Resolver.GetFormatter<int>();
+    readonly FileSequence _fileSequence;
+    readonly AsyncLock _lock = new();
+    readonly DirectoryInfo _msgPackDirectory;
+    FileFingerprintWriter _writer;
+
+    public MessagePackFileFingerprintStore(string bucket)
     {
-        static readonly Dictionary<string, FileFingerprint> EmptyFileFingerprints = new();
-        static readonly IMessagePackFormatter<int> IntFormatter = MessagePackSerializer.DefaultOptions.Resolver.GetFormatter<int>();
-        readonly FileSequence _fileSequence;
-        readonly AsyncLock _lock = new();
-        readonly DirectoryInfo _msgPackDirectory;
-        FileFingerprintWriter _writer;
+        _msgPackDirectory = GetMsgPackDirectory(bucket);
+        _fileSequence = new(_msgPackDirectory);
+    }
 
-        public MessagePackFileFingerprintStore(string bucket)
+    public int UpdateCount { get; private set; }
+    public long UpdateSize { get; private set; }
+
+    public void Dispose()
+    {
+        try
         {
-            _msgPackDirectory = GetMsgPackDirectory(bucket);
-            _fileSequence = new FileSequence(_msgPackDirectory);
+            CloseWriterAsync().GetAwaiter().GetResult();
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine("CloseWriter() failed: " + ex.Message);
         }
 
-        public int UpdateCount { get; private set; }
-        public long UpdateSize { get; private set; }
+        _lock.Dispose();
+    }
 
-        public void Dispose()
+    public async Task<IReadOnlyDictionary<string, FileFingerprint>> LoadBlobsAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            var ret = await LoadBlobCacheRetryAsync(cancellationToken).ConfigureAwait(false);
+
+            if (null != ret)
+                return ret;
+        }
+        catch (FileFormatException)
+        {
+            // The schema has changed?
+        }
+
+        cancellationToken.ThrowIfCancellationRequested();
+
+        try
+        {
+            await RebuildCacheAsync(EmptyFileFingerprints, cancellationToken).ConfigureAwait(false);
+        }
+        catch (IOException ex)
+        {
+            Console.WriteLine("LoadBlobsAsync() delete failed: " + ex.Message);
+        }
+
+        return EmptyFileFingerprints;
+    }
+
+    public async Task CloseAsync(CancellationToken cancellationToken)
+    {
+        using (await _lock.LockAsync(cancellationToken).ConfigureAwait(false))
+        {
+            await CloseWriterAsync().ConfigureAwait(false);
+        }
+    }
+
+    public async Task StoreBlobsAsync(ICollection<FileFingerprint> fileFingerprints, CancellationToken cancellationToken)
+    {
+        using (await _lock.LockAsync(cancellationToken).ConfigureAwait(false))
+        {
+            await StoreBlobsImplAsync(fileFingerprints, cancellationToken).ConfigureAwait(false);
+        }
+    }
+
+    static Stream OpenMsgPackFileForRead(FileInfo fi) =>
+        new FileStream(fi.FullName, FileMode.Open,
+            FileAccess.Read, FileShare.Read,
+            8192, FileOptions.SequentialScan | FileOptions.Asynchronous);
+
+    static Stream OpenMsgPackFileForWrite(FileInfo fi)
+    {
+        fi.Directory.Refresh();
+
+        if (!fi.Directory.Exists)
+            fi.Directory.Create();
+
+        return new FileStream(fi.FullName, FileMode.CreateNew,
+            FileAccess.Write, FileShare.None,
+            8192, FileOptions.SequentialScan | FileOptions.Asynchronous);
+    }
+
+    static DirectoryInfo GetMsgPackDirectory(string bucket)
+    {
+        var localApplicationData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData,
+            Environment.SpecialFolderOption.Create);
+
+        var path = Path.Combine(localApplicationData, "AwsSyncer", "MsgPackPaths");
+
+        if (!string.IsNullOrWhiteSpace(bucket))
+            path = Path.Combine(path, bucket);
+
+        return new(path);
+    }
+
+    async Task<IReadOnlyDictionary<string, FileFingerprint>> LoadBlobCacheRetryAsync(CancellationToken cancellationToken)
+    {
+        var delay = 3.0;
+
+        for (var retry = 0; retry < 3; ++retry)
         {
             try
             {
-                CloseWriterAsync().GetAwaiter().GetResult();
-            }
-            catch (Exception ex)
-            {
-                Debug.WriteLine("CloseWriter() failed: " + ex.Message);
-            }
-
-            _lock.Dispose();
-        }
-
-        public async Task<IReadOnlyDictionary<string, FileFingerprint>> LoadBlobsAsync(CancellationToken cancellationToken)
-        {
-            try
-            {
-                var ret = await LoadBlobCacheRetryAsync(cancellationToken).ConfigureAwait(false);
-
-                if (null != ret)
-                    return ret;
-            }
-            catch (FileFormatException)
-            {
-                // The schema has changed?
-            }
-
-            cancellationToken.ThrowIfCancellationRequested();
-
-            try
-            {
-                await RebuildCacheAsync(EmptyFileFingerprints, cancellationToken).ConfigureAwait(false);
-            }
-            catch (IOException ex)
-            {
-                Console.WriteLine("LoadBlobsAsync() delete failed: " + ex.Message);
-            }
-
-            return EmptyFileFingerprints;
-        }
-
-        public async Task CloseAsync(CancellationToken cancellationToken)
-        {
-            using (await _lock.LockAsync(cancellationToken).ConfigureAwait(false))
-            {
-                await CloseWriterAsync().ConfigureAwait(false);
-            }
-        }
-
-        public async Task StoreBlobsAsync(ICollection<FileFingerprint> fileFingerprints, CancellationToken cancellationToken)
-        {
-            using (await _lock.LockAsync(cancellationToken).ConfigureAwait(false))
-            {
-                await StoreBlobsImplAsync(fileFingerprints, cancellationToken).ConfigureAwait(false);
-            }
-        }
-
-        static Stream OpenMsgPackFileForRead(FileInfo fi) =>
-            new FileStream(fi.FullName, FileMode.Open,
-                FileAccess.Read, FileShare.Read,
-                8192, FileOptions.SequentialScan | FileOptions.Asynchronous);
-
-        static Stream OpenMsgPackFileForWrite(FileInfo fi)
-        {
-            fi.Directory.Refresh();
-
-            if (!fi.Directory.Exists)
-                fi.Directory.Create();
-
-            return new FileStream(fi.FullName, FileMode.CreateNew,
-                FileAccess.Write, FileShare.None,
-                8192, FileOptions.SequentialScan | FileOptions.Asynchronous);
-        }
-
-        static DirectoryInfo GetMsgPackDirectory(string bucket)
-        {
-            var localApplicationData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData,
-                Environment.SpecialFolderOption.Create);
-
-            var path = Path.Combine(localApplicationData, "AwsSyncer", "MsgPackPaths");
-
-            if (!string.IsNullOrWhiteSpace(bucket))
-                path = Path.Combine(path, bucket);
-
-            return new DirectoryInfo(path);
-        }
-
-        async Task<IReadOnlyDictionary<string, FileFingerprint>> LoadBlobCacheRetryAsync(CancellationToken cancellationToken)
-        {
-            var delay = 3.0;
-
-            for (var retry = 0; retry < 3; ++retry)
-            {
-                try
+                using (await _lock.LockAsync(cancellationToken).ConfigureAwait(false))
                 {
-                    using (await _lock.LockAsync(cancellationToken).ConfigureAwait(false))
-                    {
-                        return await LoadBlobsImplAsync(cancellationToken).ConfigureAwait(false);
-                    }
+                    return await LoadBlobsImplAsync(cancellationToken).ConfigureAwait(false);
                 }
-                catch (OperationCanceledException)
-                {
-                    throw;
-                }
-                catch (Exception ex)
-                {
-                    Console.WriteLine("Cache read failed: " + ex.Message);
-                }
-
-                var rnd = 0.5 * delay * RandomUtil.ThreadLocalRandom.NextDouble();
-
-                await Task.Delay(TimeSpan.FromSeconds(delay + rnd), cancellationToken).ConfigureAwait(false);
-
-                delay *= 2;
-            }
-
-            return null;
-        }
-
-        async Task<IReadOnlyDictionary<string, FileFingerprint>> LoadBlobsImplAsync(CancellationToken cancellationToken)
-        {
-            var blobs = new Dictionary<string, FileFingerprint>();
-
-            var needRebuild = false;
-
-            var blobCount = 0;
-            var fileCount = 0;
-
-            _fileSequence.Rescan();
-
-            var totalSize = 0L;
-            var compressedSize = 0L;
-
-            foreach (var fileInfo in _fileSequence.Files)
-            {
-                ++fileCount;
-
-                try
-                {
-                    fileInfo.Refresh();
-
-                    if (fileInfo.Length < 5)
-                    {
-                        needRebuild = true;
-                        continue;
-                    }
-
-                    cancellationToken.ThrowIfCancellationRequested();
-
-                    // Scope
-                    {
-                        var fileStream = OpenMsgPackFileForRead(fileInfo);
-                        var decodeStream = new DeflateStream(fileStream, CompressionMode.Decompress);
-
-                        await using (fileStream.ConfigureAwait(false))
-                        await using (decodeStream.ConfigureAwait(false))
-                        {
-                            try
-                            {
-                                using (var streamReader = new MessagePackStreamReader(decodeStream, true))
-                                {
-                                    while (await streamReader.ReadAsync(cancellationToken) is { } message)
-                                    {
-                                        totalSize += message.Length;
-
-                                        var fileFingerprint =
-                                            MessagePackSerializer.Deserialize<FileFingerprint>(message,
-                                                cancellationToken: cancellationToken);
-
-                                        if (blobs.ContainsKey(fileFingerprint.FullFilePath))
-                                            Debug.WriteLine($"Collision for {fileFingerprint.FullFilePath}");
-
-                                        blobs[fileFingerprint.FullFilePath] = fileFingerprint;
-
-                                        ++blobCount;
-                                    }
-                                }
-
-                                compressedSize += fileStream.Length;
-                            }
-                            catch (IOException ex)
-                            {
-                                needRebuild = true;
-
-                                // The entry might or might not be valid.
-                                Debug.WriteLine("MessagePackFileFingerprintStore.LoadBlobsImplAsync() read failed: " +
-                                                ex.Message);
-                            }
-                        }
-                    }
-                }
-                catch (IOException)
-                {
-                    needRebuild = true;
-                }
-                catch (InvalidDataException)
-                {
-                    needRebuild = true;
-                }
-                catch (FileFormatException)
-                {
-                    needRebuild = true;
-                }
-            }
-
-            Debug.WriteLine($"Read {totalSize.BytesToMiB():F2}MiB bytes from {compressedSize.BytesToMiB():F2}MiB file");
-
-            var count = (double)blobs.Count;
-            Debug.WriteLine($"Average size {totalSize / count:F1} bytes or {compressedSize / count:F1} compressed");
-
-            if (blobCount > blobs.Count + 100 + blobs.Count / 8)
-                needRebuild = true;
-
-            if (fileCount > 16)
-                needRebuild = true;
-
-            if (needRebuild)
-            {
-                Console.WriteLine("Rebuilding cache files");
-
-                await RebuildCacheAsync(blobs, cancellationToken).ConfigureAwait(false);
-            }
-
-            return blobs;
-        }
-
-        async Task RebuildCacheAsync(Dictionary<string, FileFingerprint> blobs, CancellationToken cancellationToken)
-        {
-            FileInfo tempFileInfo = null;
-            var allOk = false;
-
-            try
-            {
-                await CloseWriterAsync().ConfigureAwait(false);
-
-                if (blobs.Count > 0)
-                {
-                    do
-                    {
-                        var tempFileName = Path.GetRandomFileName();
-
-                        tempFileName = Path.Combine(_msgPackDirectory.FullName, tempFileName);
-
-                        tempFileInfo = new FileInfo(tempFileName);
-                    } while (tempFileInfo.Exists);
-
-                    OpenWriter(tempFileInfo);
-
-                    await StoreBlobsImplAsync(blobs.Values, cancellationToken).ConfigureAwait(false);
-
-                    await CloseWriterAsync().ConfigureAwait(false);
-                }
-
-                allOk = true;
             }
             catch (OperationCanceledException)
             {
+                throw;
             }
             catch (Exception ex)
             {
-                Console.WriteLine("Unable to truncate corrupt file: " + ex.Message);
+                Console.WriteLine("Cache read failed: " + ex.Message);
             }
 
-            if (allOk)
-            {
-                foreach (var file in _fileSequence.Files)
-                    file.Delete();
+            var rnd = 0.5 * delay * RandomUtil.ThreadLocalRandom.NextDouble();
 
-                _fileSequence.Rescan();
+            await Task.Delay(TimeSpan.FromSeconds(delay + rnd), cancellationToken).ConfigureAwait(false);
 
-                tempFileInfo?.MoveTo(_fileSequence.NewFile().FullName);
-
-                _fileSequence.Rescan();
-            }
-            else
-                tempFileInfo?.Delete();
+            delay *= 2;
         }
 
-        async Task StoreBlobsImplAsync(ICollection<FileFingerprint> fileFingerprints, CancellationToken cancellationToken)
+        return null;
+    }
+
+    async Task<IReadOnlyDictionary<string, FileFingerprint>> LoadBlobsImplAsync(CancellationToken cancellationToken)
+    {
+        var blobs = new Dictionary<string, FileFingerprint>();
+
+        var needRebuild = false;
+
+        var blobCount = 0;
+        var fileCount = 0;
+
+        _fileSequence.Rescan();
+
+        var totalSize = 0L;
+        var compressedSize = 0L;
+
+        foreach (var fileInfo in _fileSequence.Files)
         {
-            if (null == _writer)
-                OpenWriter(_fileSequence.NewFile());
+            ++fileCount;
 
-            var count = 0;
-
-            foreach (var fileFingerprint in fileFingerprints)
+            try
             {
-                if (cancellationToken.IsCancellationRequested)
-                    break;
+                fileInfo.Refresh();
 
-                _writer.Write(fileFingerprint);
-
-                if (++count > 200)
+                if (fileInfo.Length < 5)
                 {
-                    count = 0;
-                    await _writer.FlushAsync(cancellationToken).ConfigureAwait(false);
+                    needRebuild = true;
+                    continue;
                 }
 
-                ++UpdateCount;
-                UpdateSize += fileFingerprint.Fingerprint.Size;
+                cancellationToken.ThrowIfCancellationRequested();
+
+                // Scope
+                {
+                    var fileStream = OpenMsgPackFileForRead(fileInfo);
+                    var decodeStream = new DeflateStream(fileStream, CompressionMode.Decompress);
+
+                    await using (fileStream.ConfigureAwait(false))
+                    await using (decodeStream.ConfigureAwait(false))
+                    {
+                        try
+                        {
+                            using (var streamReader = new MessagePackStreamReader(decodeStream, true))
+                            {
+                                while (await streamReader.ReadAsync(cancellationToken) is { } message)
+                                {
+                                    totalSize += message.Length;
+
+                                    var fileFingerprint =
+                                        MessagePackSerializer.Deserialize<FileFingerprint>(message,
+                                            cancellationToken: cancellationToken);
+
+                                    if (blobs.ContainsKey(fileFingerprint.FullFilePath))
+                                        Debug.WriteLine($"Collision for {fileFingerprint.FullFilePath}");
+
+                                    blobs[fileFingerprint.FullFilePath] = fileFingerprint;
+
+                                    ++blobCount;
+                                }
+                            }
+
+                            compressedSize += fileStream.Length;
+                        }
+                        catch (IOException ex)
+                        {
+                            needRebuild = true;
+
+                            // The entry might or might not be valid.
+                            Debug.WriteLine("MessagePackFileFingerprintStore.LoadBlobsImplAsync() read failed: " +
+                                ex.Message);
+                        }
+                    }
+                }
+            }
+            catch (IOException)
+            {
+                needRebuild = true;
+            }
+            catch (InvalidDataException)
+            {
+                needRebuild = true;
+            }
+            catch (FileFormatException)
+            {
+                needRebuild = true;
+            }
+        }
+
+        Debug.WriteLine($"Read {totalSize.BytesToMiB():F2}MiB bytes from {compressedSize.BytesToMiB():F2}MiB file");
+
+        var count = (double)blobs.Count;
+        Debug.WriteLine($"Average size {totalSize / count:F1} bytes or {compressedSize / count:F1} compressed");
+
+        if (blobCount > blobs.Count + 100 + blobs.Count / 8)
+            needRebuild = true;
+
+        if (fileCount > 16)
+            needRebuild = true;
+
+        if (needRebuild)
+        {
+            Console.WriteLine("Rebuilding cache files");
+
+            await RebuildCacheAsync(blobs, cancellationToken).ConfigureAwait(false);
+        }
+
+        return blobs;
+    }
+
+    async Task RebuildCacheAsync(Dictionary<string, FileFingerprint> blobs, CancellationToken cancellationToken)
+    {
+        FileInfo tempFileInfo = null;
+        var allOk = false;
+
+        try
+        {
+            await CloseWriterAsync().ConfigureAwait(false);
+
+            if (blobs.Count > 0)
+            {
+                do
+                {
+                    var tempFileName = Path.GetRandomFileName();
+
+                    tempFileName = Path.Combine(_msgPackDirectory.FullName, tempFileName);
+
+                    tempFileInfo = new(tempFileName);
+                } while (tempFileInfo.Exists);
+
+                OpenWriter(tempFileInfo);
+
+                await StoreBlobsImplAsync(blobs.Values, cancellationToken).ConfigureAwait(false);
+
+                await CloseWriterAsync().ConfigureAwait(false);
             }
 
-            await _writer.FlushAsync(cancellationToken).ConfigureAwait(false);
-
-            cancellationToken.ThrowIfCancellationRequested();
+            allOk = true;
         }
-
-        void OpenWriter(FileInfo file)
+        catch (OperationCanceledException)
+        { }
+        catch (Exception ex)
         {
-            Debug.WriteLine("MsgPackFileFingerprintStore.OpenWriter()");
-
-            if (null != _writer)
-                return;
-
-            var writer = new FileFingerprintWriter();
-
-            writer.Open(file);
-
-            _writer = writer;
+            Console.WriteLine("Unable to truncate corrupt file: " + ex.Message);
         }
 
-        async Task CloseWriterAsync()
+        if (allOk)
         {
-            Debug.WriteLine("MessagePackFileFingerprintStore.CloseWriter()");
+            foreach (var file in _fileSequence.Files)
+                file.Delete();
 
-            if (null == _writer)
-                return;
+            _fileSequence.Rescan();
 
-            var writer = _writer;
+            tempFileInfo?.MoveTo(_fileSequence.NewFile().FullName);
 
-            _writer = null;
-
-            await writer.CloseAsync().ConfigureAwait(false);
-
-            writer.Dispose();
+            _fileSequence.Rescan();
         }
+        else
+            tempFileInfo?.Delete();
+    }
+
+    async Task StoreBlobsImplAsync(ICollection<FileFingerprint> fileFingerprints, CancellationToken cancellationToken)
+    {
+        if (null == _writer)
+            OpenWriter(_fileSequence.NewFile());
+
+        var count = 0;
+
+        foreach (var fileFingerprint in fileFingerprints)
+        {
+            if (cancellationToken.IsCancellationRequested)
+                break;
+
+            _writer.Write(fileFingerprint);
+
+            if (++count > 200)
+            {
+                count = 0;
+                await _writer.FlushAsync(cancellationToken).ConfigureAwait(false);
+            }
+
+            ++UpdateCount;
+            UpdateSize += fileFingerprint.Fingerprint.Size;
+        }
+
+        await _writer.FlushAsync(cancellationToken).ConfigureAwait(false);
+
+        cancellationToken.ThrowIfCancellationRequested();
+    }
+
+    void OpenWriter(FileInfo file)
+    {
+        Debug.WriteLine("MsgPackFileFingerprintStore.OpenWriter()");
+
+        if (null != _writer)
+            return;
+
+        var writer = new FileFingerprintWriter();
+
+        writer.Open(file);
+
+        _writer = writer;
+    }
+
+    async Task CloseWriterAsync()
+    {
+        Debug.WriteLine("MessagePackFileFingerprintStore.CloseWriter()");
+
+        if (null == _writer)
+            return;
+
+        var writer = _writer;
+
+        _writer = null;
+
+        await writer.CloseAsync().ConfigureAwait(false);
+
+        writer.Dispose();
     }
 }

@@ -27,136 +27,141 @@ using System.Threading.Tasks.Dataflow;
 using AwsSyncer.AWS;
 using AwsSyncer.Types;
 
-namespace AwsSyncer
+namespace AwsSyncer;
+
+public class LinkManager
 {
-    public class LinkManager
+    public static async Task CreateLinksAsync(IAwsManager awsManager,
+        ISourceBlock<Tuple<AnnotatedPath, FileFingerprint>> blobSourceBlock,
+        bool actuallyWrite,
+        CancellationToken cancellationToken)
     {
-        public static async Task CreateLinksAsync(IAwsManager awsManager,
-            ISourceBlock<Tuple<AnnotatedPath, FileFingerprint>> blobSourceBlock,
-            bool actuallyWrite,
-            CancellationToken cancellationToken)
+        var collectionBlocks = new Dictionary<string, ITargetBlock<Tuple<AnnotatedPath, FileFingerprint>>>();
+        var tasks = new List<Task>();
+
+        var routeBlock = new ActionBlock<Tuple<AnnotatedPath, FileFingerprint>>(async blob =>
         {
-            var collectionBlocks = new Dictionary<string, ITargetBlock<Tuple<AnnotatedPath, FileFingerprint>>>();
-            var tasks = new List<Task>();
+            var collection = blob.Item1.Collection;
 
-            var routeBlock = new ActionBlock<Tuple<AnnotatedPath, FileFingerprint>>(async blob =>
+            if (string.IsNullOrEmpty(collection))
+                return;
+
+            if (!collectionBlocks.TryGetValue(collection, out var collectionBlock))
             {
-                var collection = blob.Item1.Collection;
+                var bufferBlock = new BufferBlock<Tuple<AnnotatedPath, FileFingerprint>>();
 
-                if (string.IsNullOrEmpty(collection))
-                    return;
+                collectionBlock = bufferBlock;
 
-                if (!collectionBlocks.TryGetValue(collection, out var collectionBlock))
-                {
-                    var bufferBlock = new BufferBlock<Tuple<AnnotatedPath, FileFingerprint>>();
+                collectionBlocks[collection] = collectionBlock;
 
-                    collectionBlock = bufferBlock;
+                var task = CreateLinksBlockAsync(awsManager, collection, bufferBlock, actuallyWrite, cancellationToken);
 
-                    collectionBlocks[collection] = collectionBlock;
+                tasks.Add(task);
+            }
 
-                    var task = CreateLinksBlockAsync(awsManager, collection, bufferBlock, actuallyWrite, cancellationToken);
+            await collectionBlock.SendAsync(blob, cancellationToken).ConfigureAwait(false);
+        });
 
-                    tasks.Add(task);
-                }
+        blobSourceBlock.LinkTo(routeBlock, new() { PropagateCompletion = true });
 
-                await collectionBlock.SendAsync(blob, cancellationToken).ConfigureAwait(false);
+        await routeBlock.Completion.ConfigureAwait(false);
+
+        Debug.WriteLine("S3LinkCreateor.CreateLinkAsync() routeBlock is done");
+
+        foreach (var block in collectionBlocks.Values)
+            block.Complete();
+
+        await Task.WhenAll(tasks).ConfigureAwait(false);
+
+        Debug.WriteLine("S3LinkCreateor.CreateLinkAsync() all link blocks are done");
+    }
+
+    static async Task CreateLinksBlockAsync(IAwsManager awsManager,
+        string collection,
+        ISourceBlock<Tuple<AnnotatedPath, FileFingerprint>> collectionBlock,
+        bool actuallyWrite,
+        CancellationToken cancellationToken)
+    {
+        var links = await awsManager.GetLinksAsync(collection, cancellationToken).ConfigureAwait(false);
+
+        Debug.WriteLine($"Link handler for {collection} found {links.Count} existing links");
+
+        var createLinkBlock = new ActionBlock<S3Links.ICreateLinkRequest>(
+            link => CreateLinkAsync(awsManager, link, actuallyWrite, cancellationToken),
+            new()
+            {
+                MaxDegreeOfParallelism = 512,
+                CancellationToken = cancellationToken
             });
 
-            blobSourceBlock.LinkTo(routeBlock, new DataflowLinkOptions { PropagateCompletion = true });
+        var makeLinkBlock = new TransformBlock<Tuple<AnnotatedPath, FileFingerprint>, S3Links.ICreateLinkRequest>(
+            tuple =>
+            {
+                var path = tuple.Item1;
+                var file = tuple.Item2;
 
-            await routeBlock.Completion.ConfigureAwait(false);
+                if (collection != path.Collection)
+                    throw new InvalidOperationException($"Create link for {path.Collection} on {collection}");
 
-            Debug.WriteLine("S3LinkCreateor.CreateLinkAsync() routeBlock is done");
+                var relativePath = path.RelativePath;
 
-            foreach (var block in collectionBlocks.Values)
-                block.Complete();
+                if (relativePath.StartsWith("..", StringComparison.Ordinal))
+                    throw new InvalidOperationException($"Create link for invalid path {relativePath}");
 
-            await Task.WhenAll(tasks).ConfigureAwait(false);
+                if (relativePath.StartsWith("file:", StringComparison.OrdinalIgnoreCase))
+                    throw new InvalidOperationException($"Create link for invalid path {relativePath}");
 
-            Debug.WriteLine("S3LinkCreateor.CreateLinkAsync() all link blocks are done");
-        }
+                relativePath = relativePath.Replace('\\', '/');
 
-        static async Task CreateLinksBlockAsync(IAwsManager awsManager,
-            string collection,
-            ISourceBlock<Tuple<AnnotatedPath, FileFingerprint>> collectionBlock,
-            bool actuallyWrite,
-            CancellationToken cancellationToken)
+                if (relativePath.StartsWith("/", StringComparison.Ordinal))
+                    throw new InvalidOperationException($"Create link for invalid path {relativePath}");
+
+                links.TryGetValue(relativePath, out var eTag);
+
+                return awsManager.BuildLinkRequest(collection, relativePath, file, eTag);
+            },
+            new()
+            {
+                CancellationToken = cancellationToken,
+                MaxDegreeOfParallelism = Environment.ProcessorCount
+            });
+
+        makeLinkBlock.LinkTo(createLinkBlock, new() { PropagateCompletion = true }, link => null != link);
+        makeLinkBlock.LinkTo(DataflowBlock.NullTarget<S3Links.ICreateLinkRequest>());
+
+        collectionBlock.LinkTo(makeLinkBlock, new() { PropagateCompletion = true });
+
+        await createLinkBlock.Completion.ConfigureAwait(false);
+
+        Debug.WriteLine($"Link handler for {collection} is done");
+    }
+
+    static async Task CreateLinkAsync(IAwsManager awsManager, S3Links.ICreateLinkRequest createLinkRequest, bool actuallyWrite,
+        CancellationToken cancellationToken)
+    {
+        if (cancellationToken.IsCancellationRequested)
+            return;
+
+        var relativePath = createLinkRequest.RelativePath;
+        var key = createLinkRequest.FileFingerprint.Fingerprint.Key();
+
+        Console.WriteLine("Link {0} \"{1}\" -> {2} ({3})",
+            createLinkRequest.Collection, relativePath, key[..12],
+            createLinkRequest.FileFingerprint.WasCached ? "cached" : "new");
+
+        if (!actuallyWrite)
+            return;
+
+        try
         {
-            var links = await awsManager.GetLinksAsync(collection, cancellationToken).ConfigureAwait(false);
-
-            Debug.WriteLine($"Link handler for {collection} found {links.Count} existing links");
-
-            var createLinkBlock = new ActionBlock<S3Links.ICreateLinkRequest>(
-                link => CreateLinkAsync(awsManager, link, actuallyWrite, cancellationToken),
-                new ExecutionDataflowBlockOptions { MaxDegreeOfParallelism = 512, CancellationToken = cancellationToken });
-
-            var makeLinkBlock = new TransformBlock<Tuple<AnnotatedPath, FileFingerprint>, S3Links.ICreateLinkRequest>(
-                tuple =>
-                {
-                    var path = tuple.Item1;
-                    var file = tuple.Item2;
-
-                    if (collection != path.Collection)
-                        throw new InvalidOperationException($"Create link for {path.Collection} on {collection}");
-
-                    var relativePath = path.RelativePath;
-
-                    if (relativePath.StartsWith("..", StringComparison.Ordinal))
-                        throw new InvalidOperationException($"Create link for invalid path {relativePath}");
-
-                    if (relativePath.StartsWith("file:", StringComparison.OrdinalIgnoreCase))
-                        throw new InvalidOperationException($"Create link for invalid path {relativePath}");
-
-                    relativePath = relativePath.Replace('\\', '/');
-
-                    if (relativePath.StartsWith("/", StringComparison.Ordinal))
-                        throw new InvalidOperationException($"Create link for invalid path {relativePath}");
-
-                    links.TryGetValue(relativePath, out var eTag);
-
-                    return awsManager.BuildLinkRequest(collection, relativePath, file, eTag);
-                },
-                new ExecutionDataflowBlockOptions
-                    { CancellationToken = cancellationToken, MaxDegreeOfParallelism = Environment.ProcessorCount });
-
-            makeLinkBlock.LinkTo(createLinkBlock, new DataflowLinkOptions { PropagateCompletion = true }, link => null != link);
-            makeLinkBlock.LinkTo(DataflowBlock.NullTarget<S3Links.ICreateLinkRequest>());
-
-            collectionBlock.LinkTo(makeLinkBlock, new DataflowLinkOptions { PropagateCompletion = true });
-
-            await createLinkBlock.Completion.ConfigureAwait(false);
-
-            Debug.WriteLine($"Link handler for {collection} is done");
+            await awsManager.CreateLinkAsync(createLinkRequest, cancellationToken).ConfigureAwait(false);
         }
-
-        static async Task CreateLinkAsync(IAwsManager awsManager, S3Links.ICreateLinkRequest createLinkRequest, bool actuallyWrite,
-            CancellationToken cancellationToken)
+        catch (OperationCanceledException)
+        { }
+        catch (Exception ex)
         {
-            if (cancellationToken.IsCancellationRequested)
-                return;
-
-            var relativePath = createLinkRequest.RelativePath;
-            var key = createLinkRequest.FileFingerprint.Fingerprint.Key();
-
-            Console.WriteLine("Link {0} \"{1}\" -> {2} ({3})",
-                createLinkRequest.Collection, relativePath, key[..12],
-                createLinkRequest.FileFingerprint.WasCached ? "cached" : "new");
-
-            if (!actuallyWrite)
-                return;
-
-            try
-            {
-                await awsManager.CreateLinkAsync(createLinkRequest, cancellationToken).ConfigureAwait(false);
-            }
-            catch (OperationCanceledException)
-            {
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine("Link {0} {1} -> {2} failed: {3}", createLinkRequest.Collection, relativePath, key[..12],
-                    ex.Message);
-            }
+            Console.WriteLine("Link {0} {1} -> {2} failed: {3}", createLinkRequest.Collection, relativePath, key[..12],
+                ex.Message);
         }
     }
 }

@@ -28,93 +28,89 @@ using AwsSyncer.Types;
 using AwsSyncer.Utility;
 using Microsoft.Extensions.Configuration;
 
-namespace AwsSyncer.AWS
+namespace AwsSyncer.AWS;
+
+public interface IAwsManager : IDisposable
 {
-    public interface IAwsManager : IDisposable
+    Task<IReadOnlyDictionary<byte[], string>> ScanAsync(CancellationToken cancellationToken);
+    S3Blobs.IUploadBlobRequest BuildUploadBlobRequest(Tuple<FileFingerprint, AnnotatedPath> tuple);
+    Task UploadBlobAsync(S3Blobs.IUploadBlobRequest uploadBlobRequest, CancellationToken cancellationToken);
+    Task<IReadOnlyDictionary<string, string>> GetLinksAsync(string name, CancellationToken cancellationToken);
+
+    S3Links.ICreateLinkRequest BuildLinkRequest(string collection, string relativePath, FileFingerprint fileFingerprint,
+        string existingETag = null);
+
+    Task CreateLinkAsync(S3Links.ICreateLinkRequest createLinkRequest, CancellationToken cancellationToken);
+}
+
+public sealed class AwsManager : IAwsManager
+{
+    readonly IAmazonS3 _amazonS3;
+    readonly IPathManager _pathManager;
+    readonly S3Blobs _s3Blobs;
+    readonly S3Links _s3Links;
+
+    public AwsManager(IConfiguration config, IAmazonS3 amazonS3, IPathManager pathManager)
     {
-        Task<IReadOnlyDictionary<byte[], string>> ScanAsync(CancellationToken cancellationToken);
-        S3Blobs.IUploadBlobRequest BuildUploadBlobRequest(Tuple<FileFingerprint, AnnotatedPath> tuple);
-        Task UploadBlobAsync(S3Blobs.IUploadBlobRequest uploadBlobRequest, CancellationToken cancellationToken);
-        Task<IReadOnlyDictionary<string, string>> GetLinksAsync(string name, CancellationToken cancellationToken);
+        _amazonS3 = amazonS3 ?? throw new ArgumentNullException(nameof(amazonS3));
+        _pathManager = pathManager ?? throw new ArgumentNullException(nameof(pathManager));
 
-        S3Links.ICreateLinkRequest BuildLinkRequest(string collection, string relativePath, FileFingerprint fileFingerprint,
-            string existingETag = null);
+        var storageClass = S3StorageClass.Standard;
+        var storageClassString = config["StorageClass"];
 
-        Task CreateLinkAsync(S3Links.ICreateLinkRequest createLinkRequest, CancellationToken cancellationToken);
+        if (!string.IsNullOrWhiteSpace(storageClassString))
+            storageClass = S3StorageClass.FindValue(storageClassString);
+
+        var blobStorageClass = storageClass;
+        var blobStorageClassString = config["BlobStorageClass"];
+
+        if (!string.IsNullOrWhiteSpace(blobStorageClassString))
+            blobStorageClass = S3StorageClass.FindValue(blobStorageClassString);
+
+        var linkStorageClass = storageClass;
+        var linkStorageClassString = config["LinkStorageClass"];
+
+        if (!string.IsNullOrWhiteSpace(linkStorageClassString))
+            linkStorageClass = S3StorageClass.FindValue(linkStorageClassString);
+
+        _s3Blobs = new(amazonS3, pathManager, blobStorageClass);
+        _s3Links = new(amazonS3, pathManager, linkStorageClass);
     }
 
-    public sealed class AwsManager : IAwsManager
+    #region IDisposable Members
+
+    public void Dispose() => _amazonS3.Dispose();
+
+    #endregion
+
+    public async Task<IReadOnlyDictionary<byte[], string>> ScanAsync(CancellationToken cancellationToken)
     {
-        readonly IAmazonS3 _amazonS3;
-        readonly IPathManager _pathManager;
-        readonly S3Blobs _s3Blobs;
-        readonly S3Links _s3Links;
+        var statistics = new S3Blobs.Statistics();
 
-        public AwsManager(IConfiguration config, IAmazonS3 amazonS3, IPathManager pathManager)
-        {
-            _amazonS3 = amazonS3 ?? throw new ArgumentNullException(nameof(amazonS3));
-            _pathManager = pathManager ?? throw new ArgumentNullException(nameof(pathManager));
+        var sw = Stopwatch.StartNew();
 
-            var storageClass = S3StorageClass.Standard;
-            var storageClassString = config["StorageClass"];
+        var s3Blobs = await _s3Blobs.ListAsync(statistics, cancellationToken).ConfigureAwait(false);
 
-            if (!string.IsNullOrWhiteSpace(storageClassString))
-                storageClass = S3StorageClass.FindValue(storageClassString);
+        sw.Stop();
 
-            var blobStorageClass = storageClass;
-            var blobStorageClassString = config["BlobStorageClass"];
+        Console.WriteLine(
+            $"Bucket {_pathManager.Bucket} contains {s3Blobs.Count}/{statistics.Count} items {statistics.TotalSize.BytesToGiB():F2}GiB in {sw.Elapsed}");
 
-            if (!string.IsNullOrWhiteSpace(blobStorageClassString))
-                blobStorageClass = S3StorageClass.FindValue(blobStorageClassString);
-
-            var linkStorageClass = storageClass;
-            var linkStorageClassString = config["LinkStorageClass"];
-
-            if (!string.IsNullOrWhiteSpace(linkStorageClassString))
-                linkStorageClass = S3StorageClass.FindValue(linkStorageClassString);
-
-            _s3Blobs = new S3Blobs(amazonS3, pathManager, blobStorageClass);
-            _s3Links = new S3Links(amazonS3, pathManager, linkStorageClass);
-        }
-
-        #region IDisposable Members
-
-        public void Dispose()
-        {
-            _amazonS3.Dispose();
-        }
-
-        #endregion
-
-        public async Task<IReadOnlyDictionary<byte[], string>> ScanAsync(CancellationToken cancellationToken)
-        {
-            var statistics = new S3Blobs.Statistics();
-
-            var sw = Stopwatch.StartNew();
-
-            var s3Blobs = await _s3Blobs.ListAsync(statistics, cancellationToken).ConfigureAwait(false);
-
-            sw.Stop();
-
-            Console.WriteLine(
-                $"Bucket {_pathManager.Bucket} contains {s3Blobs.Count}/{statistics.Count} items {statistics.TotalSize.BytesToGiB():F2}GiB in {sw.Elapsed}");
-
-            return s3Blobs;
-        }
-
-        public S3Blobs.IUploadBlobRequest BuildUploadBlobRequest(Tuple<FileFingerprint, AnnotatedPath> tuple) =>
-            _s3Blobs.BuildUploadBlobRequest(tuple);
-
-        public Task UploadBlobAsync(S3Blobs.IUploadBlobRequest uploadBlobRequest, CancellationToken cancellationToken) =>
-            _s3Blobs.UploadBlobAsync(uploadBlobRequest, cancellationToken);
-
-        public Task<IReadOnlyDictionary<string, string>> GetLinksAsync(string name, CancellationToken cancellationToken) =>
-            _s3Links.ListAsync(name, cancellationToken);
-
-        public S3Links.ICreateLinkRequest BuildLinkRequest(string collection, string relativePath, FileFingerprint fileFingerprint,
-            string existingETag = null) => _s3Links.BuildCreateLinkRequest(collection, relativePath, fileFingerprint, existingETag);
-
-        public Task CreateLinkAsync(S3Links.ICreateLinkRequest createLinkRequest, CancellationToken cancellationToken) =>
-            _s3Links.CreateLinkAsync(createLinkRequest, cancellationToken);
+        return s3Blobs;
     }
+
+    public S3Blobs.IUploadBlobRequest BuildUploadBlobRequest(Tuple<FileFingerprint, AnnotatedPath> tuple) =>
+        _s3Blobs.BuildUploadBlobRequest(tuple);
+
+    public Task UploadBlobAsync(S3Blobs.IUploadBlobRequest uploadBlobRequest, CancellationToken cancellationToken) =>
+        _s3Blobs.UploadBlobAsync(uploadBlobRequest, cancellationToken);
+
+    public Task<IReadOnlyDictionary<string, string>> GetLinksAsync(string name, CancellationToken cancellationToken) =>
+        _s3Links.ListAsync(name, cancellationToken);
+
+    public S3Links.ICreateLinkRequest BuildLinkRequest(string collection, string relativePath, FileFingerprint fileFingerprint,
+        string existingETag = null) => _s3Links.BuildCreateLinkRequest(collection, relativePath, fileFingerprint, existingETag);
+
+    public Task CreateLinkAsync(S3Links.ICreateLinkRequest createLinkRequest, CancellationToken cancellationToken) =>
+        _s3Links.CreateLinkAsync(createLinkRequest, cancellationToken);
 }

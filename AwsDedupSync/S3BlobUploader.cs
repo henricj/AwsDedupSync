@@ -28,115 +28,115 @@ using AwsSyncer.AWS;
 using AwsSyncer.Types;
 using AwsSyncer.Utility;
 
-namespace AwsDedupSync
+namespace AwsDedupSync;
+
+public class S3BlobUploader
 {
-    public class S3BlobUploader
+    readonly S3Settings _s3Settings;
+
+    public S3BlobUploader(S3Settings s3Settings) => _s3Settings = s3Settings ?? throw new ArgumentNullException(nameof(s3Settings));
+
+    public Task UploadBlobsAsync(IAwsManager awsManager,
+        ISourceBlock<Tuple<FileFingerprint, AnnotatedPath>> uniqueBlobBlock,
+        IReadOnlyDictionary<byte[], string> knowObjects,
+        CancellationToken cancellationToken)
     {
-        readonly S3Settings _s3Settings;
+        var blobCount = 0;
+        var blobTotalSize = 0L;
 
-        public S3BlobUploader(S3Settings s3Settings)
-        {
-            _s3Settings = s3Settings ?? throw new ArgumentNullException(nameof(s3Settings));
-        }
+        var builderBlock = new TransformBlock<Tuple<FileFingerprint, AnnotatedPath>, S3Blobs.IUploadBlobRequest>(
+            tuple =>
+            {
+                var exists = knowObjects.TryGetValue(tuple.Item1.Fingerprint.Sha3_512, out var etag);
 
-        public Task UploadBlobsAsync(IAwsManager awsManager,
-            ISourceBlock<Tuple<FileFingerprint, AnnotatedPath>> uniqueBlobBlock,
-            IReadOnlyDictionary<byte[], string> knowObjects,
-            CancellationToken cancellationToken)
-        {
-            var blobCount = 0;
-            var blobTotalSize = 0L;
+                //Debug.WriteLine($"{tuple.Item1.FullFilePath} {(exists ? "already exists" : "scheduled for upload")}");
 
-            var builderBlock = new TransformBlock<Tuple<FileFingerprint, AnnotatedPath>, S3Blobs.IUploadBlobRequest>(
-                tuple =>
+                if (exists)
                 {
-                    var exists = knowObjects.TryGetValue(tuple.Item1.Fingerprint.Sha3_512, out var etag);
-
-                    //Debug.WriteLine($"{tuple.Item1.FullFilePath} {(exists ? "already exists" : "scheduled for upload")}");
-
-                    if (exists)
+                    // We can't check multipart uploads this way since we don't know the size
+                    // of the individual parts.
+                    if (etag.Contains('-'))
                     {
-                        // We can't check multipart uploads this way since we don't know the size
-                        // of the individual parts.
-                        if (etag.Contains('-'))
-                        {
-                            Debug.WriteLine(
-                                $"{tuple.Item1.FullFilePath} is a multi-part upload with ETag {etag} {tuple.Item1.Fingerprint.Key()[..12]}");
+                        Debug.WriteLine(
+                            $"{tuple.Item1.FullFilePath} is a multi-part upload with ETag {etag} {tuple.Item1.Fingerprint.Key()[..12]}");
 
-                            return null;
-                        }
-
-                        var expectedETag = tuple.Item1.Fingerprint.S3ETag();
-
-                        if (string.Equals(expectedETag, etag, StringComparison.OrdinalIgnoreCase))
-                            return null;
-
-                        Console.WriteLine(
-                            $"ERROR: {tuple.Item1.FullFilePath} tag mismatch {etag}, expected {expectedETag} {tuple.Item1.Fingerprint.Key()[..12]}");
+                        return null;
                     }
 
-                    var request = awsManager.BuildUploadBlobRequest(tuple);
+                    var expectedETag = tuple.Item1.Fingerprint.S3ETag();
 
-                    if (null == request)
+                    if (string.Equals(expectedETag, etag, StringComparison.OrdinalIgnoreCase))
                         return null;
 
-                    Interlocked.Increment(ref blobCount);
+                    Console.WriteLine(
+                        $"ERROR: {tuple.Item1.FullFilePath} tag mismatch {etag}, expected {expectedETag} {tuple.Item1.Fingerprint.Key()[..12]}");
+                }
 
-                    Interlocked.Add(ref blobTotalSize, request.FileFingerprint.Fingerprint.Size);
+                var request = awsManager.BuildUploadBlobRequest(tuple);
 
-                    return request;
-                },
-                new ExecutionDataflowBlockOptions
-                    { CancellationToken = cancellationToken, MaxDegreeOfParallelism = Environment.ProcessorCount });
+                if (null == request)
+                    return null;
 
-            var uploader = new ActionBlock<S3Blobs.IUploadBlobRequest>(
-                blob => UploadBlobAsync(awsManager, blob, cancellationToken),
-                new ExecutionDataflowBlockOptions
-                {
-                    MaxDegreeOfParallelism = 4,
-                    CancellationToken = cancellationToken
-                });
+                Interlocked.Increment(ref blobCount);
 
-            builderBlock.LinkTo(uploader, new DataflowLinkOptions { PropagateCompletion = true }, r => null != r);
-            builderBlock.LinkTo(DataflowBlock.NullTarget<S3Blobs.IUploadBlobRequest>());
+                Interlocked.Add(ref blobTotalSize, request.FileFingerprint.Fingerprint.Size);
 
-            uniqueBlobBlock.LinkTo(builderBlock, new DataflowLinkOptions { PropagateCompletion = true });
+                return request;
+            },
+            new()
+            {
+                CancellationToken = cancellationToken,
+                MaxDegreeOfParallelism = Environment.ProcessorCount
+            });
 
-            var tasks = new List<Task> { uploader.Completion };
+        var uploader = new ActionBlock<S3Blobs.IUploadBlobRequest>(
+            blob => UploadBlobAsync(awsManager, blob, cancellationToken),
+            new()
+            {
+                MaxDegreeOfParallelism = 4,
+                CancellationToken = cancellationToken
+            });
+
+        builderBlock.LinkTo(uploader, new() { PropagateCompletion = true }, r => null != r);
+        builderBlock.LinkTo(DataflowBlock.NullTarget<S3Blobs.IUploadBlobRequest>());
+
+        uniqueBlobBlock.LinkTo(builderBlock, new() { PropagateCompletion = true });
+
+        var tasks = new List<Task> { uploader.Completion };
 
 #if DEBUG
-            var uploadDoneTask = uploader.Completion
-                .ContinueWith(
-                    _ => Console.WriteLine($"Upload complete: {blobCount} items {blobTotalSize.BytesToGiB():F2}GiB"), cancellationToken);
+        var uploadDoneTask = uploader.Completion
+            .ContinueWith(
+                _ => Console.WriteLine($"Upload complete: {blobCount} items {blobTotalSize.BytesToGiB():F2}GiB"),
+                cancellationToken);
 
-            tasks.Add(uploadDoneTask);
+        tasks.Add(uploadDoneTask);
 #endif
 
 
-            return Task.WhenAll(tasks);
-        }
+        return Task.WhenAll(tasks);
+    }
 
-        async Task UploadBlobAsync(IAwsManager awsManager, S3Blobs.IUploadBlobRequest uploadBlobRequest,
-            CancellationToken cancellationToken)
+    async Task UploadBlobAsync(IAwsManager awsManager, S3Blobs.IUploadBlobRequest uploadBlobRequest,
+        CancellationToken cancellationToken)
+    {
+        if (null == uploadBlobRequest)
+            return;
+
+        Console.WriteLine("Upload {0} as {1}",
+            uploadBlobRequest.FileFingerprint.FullFilePath,
+            uploadBlobRequest.FileFingerprint.Fingerprint.Key()[..12]);
+
+        if (!_s3Settings.ActuallyWrite)
+            return;
+
+        try
         {
-            if (null == uploadBlobRequest)
-                return;
-
-            Console.WriteLine("Upload {0} as {1}",
-                uploadBlobRequest.FileFingerprint.FullFilePath,
-                uploadBlobRequest.FileFingerprint.Fingerprint.Key()[..12]);
-
-            if (!_s3Settings.ActuallyWrite)
-                return;
-
-            try
-            {
-                await awsManager.UploadBlobAsync(uploadBlobRequest, cancellationToken).ConfigureAwait(false);
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine("Upload of {0} failed: {1}", uploadBlobRequest.FileFingerprint.FullFilePath, ex.Message);
-            }
+            await awsManager.UploadBlobAsync(uploadBlobRequest, cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine("Upload of {0} failed: {1}", uploadBlobRequest.FileFingerprint.FullFilePath, ex.Message);
         }
     }
 }

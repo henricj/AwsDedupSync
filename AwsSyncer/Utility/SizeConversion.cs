@@ -18,15 +18,14 @@
 // FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
-namespace AwsSyncer.Utility
+namespace AwsSyncer.Utility;
+
+public static class SizeConversion
 {
-    public static class SizeConversion
-    {
-        const double ToGiB = 1.0 / (1024 * 1024 * 1024);
-        const double ToMiB = 1.0 / (1024 * 1024);
+    const double ToGiB = 1.0 / (1024 * 1024 * 1024);
+    const double ToMiB = 1.0 / (1024 * 1024);
 
-        public static double BytesToGiB(this long value) => value * ToGiB;
+    public static double BytesToGiB(this long value) => value * ToGiB;
 
-        public static double BytesToMiB(this long value) => value * ToMiB;
-    }
+    public static double BytesToMiB(this long value) => value * ToMiB;
 }

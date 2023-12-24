@@ -26,102 +26,95 @@ using System.Threading.Tasks;
 using System.Threading.Tasks.Dataflow;
 using AwsSyncer.Types;
 
-namespace AwsSyncer.FileBlobs
-{
-    public interface IBlobManager : IDisposable
-    {
-        Task LoadAsync(CollectionPath[] paths,
-            Func<FileInfo, bool> filePredicate,
-            ITargetBlock<Tuple<AnnotatedPath, FileFingerprint>> joinedTargetBlock,
-            CancellationToken cancellationToken);
+namespace AwsSyncer.FileBlobs;
 
-        Task ShutdownAsync(CancellationToken cancellationToken);
+public interface IBlobManager : IDisposable
+{
+    Task LoadAsync(CollectionPath[] paths,
+        Func<FileInfo, bool> filePredicate,
+        ITargetBlock<Tuple<AnnotatedPath, FileFingerprint>> joinedTargetBlock,
+        CancellationToken cancellationToken);
+
+    Task ShutdownAsync(CancellationToken cancellationToken);
+}
+
+public sealed class BlobManager : IBlobManager
+{
+    readonly IFileFingerprintManager _fileFingerprintManager;
+
+    public BlobManager(IFileFingerprintManager fileFingerprintManager) => _fileFingerprintManager =
+        fileFingerprintManager ?? throw new ArgumentNullException(nameof(fileFingerprintManager));
+
+    #region IDisposable Members
+
+    public void Dispose() => _fileFingerprintManager.Dispose();
+
+    #endregion
+
+    public async Task LoadAsync(CollectionPath[] paths,
+        Func<FileInfo, bool> filePredicate,
+        ITargetBlock<Tuple<AnnotatedPath, FileFingerprint>> joinedTargetBlock,
+        CancellationToken cancellationToken)
+    {
+        await _fileFingerprintManager.LoadAsync(cancellationToken).ConfigureAwait(false);
+
+        await GenerateFileFingerprintsAsync(paths, filePredicate, joinedTargetBlock, cancellationToken)
+            .ConfigureAwait(false);
     }
 
-    public sealed class BlobManager : IBlobManager
+    public Task ShutdownAsync(CancellationToken cancellationToken)
     {
-        readonly IFileFingerprintManager _fileFingerprintManager;
+        Debug.WriteLine("BlobManager.ShutdownAsync()");
 
-        public BlobManager(IFileFingerprintManager fileFingerprintManager)
+        return _fileFingerprintManager.ShutdownAsync(cancellationToken);
+    }
+
+    async Task GenerateFileFingerprintsAsync(CollectionPath[] paths,
+        Func<FileInfo, bool> filePredicate,
+        ITargetBlock<Tuple<AnnotatedPath, FileFingerprint>> joinedTargetBlock,
+        CancellationToken cancellationToken)
+    {
+        try
         {
-            _fileFingerprintManager = fileFingerprintManager ?? throw new ArgumentNullException(nameof(fileFingerprintManager));
-        }
+            var annotatedPathBroadcastBlock = new BroadcastBlock<AnnotatedPath[]>(aps => aps,
+                new() { CancellationToken = cancellationToken });
 
-        #region IDisposable Members
+            var joiner = new LinkFingerprintJoiner(joinedTargetBlock);
 
-        public void Dispose()
-        {
-            _fileFingerprintManager.Dispose();
-        }
+            annotatedPathBroadcastBlock.LinkTo(joiner.AnnotatedPathsBlock,
+                new() { PropagateCompletion = true });
 
-        #endregion
+            var fileFingerprintBroadcastBlock = new BroadcastBlock<FileFingerprint>(ff => ff,
+                new() { CancellationToken = cancellationToken });
 
-        public async Task LoadAsync(CollectionPath[] paths,
-            Func<FileInfo, bool> filePredicate,
-            ITargetBlock<Tuple<AnnotatedPath, FileFingerprint>> joinedTargetBlock,
-            CancellationToken cancellationToken)
-        {
-            await _fileFingerprintManager.LoadAsync(cancellationToken).ConfigureAwait(false);
+            fileFingerprintBroadcastBlock.LinkTo(joiner.FileFingerprintBlock,
+                new() { PropagateCompletion = true });
 
-            await GenerateFileFingerprintsAsync(paths, filePredicate, joinedTargetBlock, cancellationToken)
-                .ConfigureAwait(false);
-        }
+            var fingerprintGeneratorTask = _fileFingerprintManager
+                .GenerateFileFingerprintsAsync(annotatedPathBroadcastBlock, fileFingerprintBroadcastBlock, cancellationToken);
 
-        public Task ShutdownAsync(CancellationToken cancellationToken)
-        {
-            Debug.WriteLine("BlobManager.ShutdownAsync()");
-
-            return _fileFingerprintManager.ShutdownAsync(cancellationToken);
-        }
-
-        async Task GenerateFileFingerprintsAsync(CollectionPath[] paths,
-            Func<FileInfo, bool> filePredicate,
-            ITargetBlock<Tuple<AnnotatedPath, FileFingerprint>> joinedTargetBlock,
-            CancellationToken cancellationToken)
-        {
             try
             {
-                var annotatedPathBroadcastBlock = new BroadcastBlock<AnnotatedPath[]>(aps => aps,
-                    new DataflowBlockOptions { CancellationToken = cancellationToken });
-
-                var joiner = new LinkFingerprintJoiner(joinedTargetBlock);
-
-                annotatedPathBroadcastBlock.LinkTo(joiner.AnnotatedPathsBlock,
-                    new DataflowLinkOptions { PropagateCompletion = true });
-
-                var fileFingerprintBroadcastBlock = new BroadcastBlock<FileFingerprint>(ff => ff,
-                    new DataflowBlockOptions { CancellationToken = cancellationToken });
-
-                fileFingerprintBroadcastBlock.LinkTo(joiner.FileFingerprintBlock,
-                    new DataflowLinkOptions { PropagateCompletion = true });
-
-                var fingerprintGeneratorTask = _fileFingerprintManager
-                    .GenerateFileFingerprintsAsync(annotatedPathBroadcastBlock, fileFingerprintBroadcastBlock, cancellationToken);
-
-                try
-                {
-                    await DirectoryScanner
-                        .GenerateAnnotatedPathsAsync(paths, filePredicate, annotatedPathBroadcastBlock, cancellationToken)
-                        .ConfigureAwait(false);
-                }
-                catch (OperationCanceledException)
-                {
-                }
-                catch (Exception ex)
-                {
-                    Console.Write("Path scan failed: " + ex.Message);
-                }
-
-                await fingerprintGeneratorTask.ConfigureAwait(false);
+                await DirectoryScanner
+                    .GenerateAnnotatedPathsAsync(paths, filePredicate, annotatedPathBroadcastBlock, cancellationToken)
+                    .ConfigureAwait(false);
             }
+            catch (OperationCanceledException)
+            { }
             catch (Exception ex)
             {
-                Console.WriteLine("GenerateFileFingerprintsAsync() failed: " + ex.Message);
+                Console.Write("Path scan failed: " + ex.Message);
             }
-            finally
-            {
-                Debug.WriteLine("BlobManager.GenerateFileFingerprintsAsync() is done");
-            }
+
+            await fingerprintGeneratorTask.ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine("GenerateFileFingerprintsAsync() failed: " + ex.Message);
+        }
+        finally
+        {
+            Debug.WriteLine("BlobManager.GenerateFileFingerprintsAsync() is done");
         }
     }
 }

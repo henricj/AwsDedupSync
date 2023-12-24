@@ -27,102 +27,103 @@ using System.Threading.Tasks.Dataflow;
 using AwsSyncer.Types;
 using AwsSyncer.Utility;
 
-namespace AwsSyncer
+namespace AwsSyncer;
+
+class LinkFingerprintJoiner
 {
-    class LinkFingerprintJoiner
+    readonly ConcurrentDictionary<string, PathFingerprint> _join = new(StringComparer.CurrentCultureIgnoreCase);
+
+    readonly ITargetBlock<Tuple<AnnotatedPath, FileFingerprint>> _targetBlock;
+
+    public ITargetBlock<AnnotatedPath[]> AnnotatedPathsBlock { get; }
+    public ITargetBlock<FileFingerprint> FileFingerprintBlock { get; }
+
+    public LinkFingerprintJoiner(ITargetBlock<Tuple<AnnotatedPath, FileFingerprint>> targetBlock)
     {
-        readonly ConcurrentDictionary<string, PathFingerprint> _join = new(StringComparer.CurrentCultureIgnoreCase);
+        _targetBlock = targetBlock ?? throw new ArgumentNullException(nameof(targetBlock));
 
-        readonly ITargetBlock<Tuple<AnnotatedPath, FileFingerprint>> _targetBlock;
+        AnnotatedPathsBlock = new ActionBlock<AnnotatedPath[]>(
+            aps => Task.WhenAll(aps.Select(SetAnnotatedPathAsync)),
+            new() { MaxDegreeOfParallelism = DataflowBlockOptions.Unbounded });
 
-        public LinkFingerprintJoiner(ITargetBlock<Tuple<AnnotatedPath, FileFingerprint>> targetBlock)
+        FileFingerprintBlock = new ActionBlock<FileFingerprint>(SetFileFingerprintAsync,
+            new() { MaxDegreeOfParallelism = DataflowBlockOptions.Unbounded });
+
+        var task = Task.WhenAll(AnnotatedPathsBlock.Completion, FileFingerprintBlock.Completion)
+            .ContinueWith(_ => { targetBlock.Complete(); });
+
+        TaskCollector.Default.Add(task, "Joiner completion");
+    }
+
+    PathFingerprint GetPathFingerprint(string fullFilePath)
+    {
+        PathFingerprint pathFingerprint;
+        while (!_join.TryGetValue(fullFilePath, out pathFingerprint))
         {
-            _targetBlock = targetBlock ?? throw new ArgumentNullException(nameof(targetBlock));
+            pathFingerprint = new();
 
-            AnnotatedPathsBlock = new ActionBlock<AnnotatedPath[]>(
-                aps => Task.WhenAll(aps.Select(SetAnnotatedPathAsync)),
-                new ExecutionDataflowBlockOptions { MaxDegreeOfParallelism = DataflowBlockOptions.Unbounded });
-
-            FileFingerprintBlock = new ActionBlock<FileFingerprint>(SetFileFingerprintAsync,
-                new ExecutionDataflowBlockOptions { MaxDegreeOfParallelism = DataflowBlockOptions.Unbounded });
-
-            var task = Task.WhenAll(AnnotatedPathsBlock.Completion, FileFingerprintBlock.Completion)
-                .ContinueWith(_ => { targetBlock.Complete(); });
-
-            TaskCollector.Default.Add(task, "Joiner completion");
+            if (_join.TryAdd(fullFilePath, pathFingerprint))
+                break;
         }
 
-        public ITargetBlock<AnnotatedPath[]> AnnotatedPathsBlock { get; }
-        public ITargetBlock<FileFingerprint> FileFingerprintBlock { get; }
+        return pathFingerprint;
+    }
 
-        PathFingerprint GetPathFingerprint(string fullFilePath)
+    Task SetFileFingerprintAsync(FileFingerprint fileFingerprint)
+    {
+        var pathFingerprint = GetPathFingerprint(fileFingerprint.FullFilePath);
+
+        AnnotatedPath[] annotatedPaths;
+
+        lock (pathFingerprint)
         {
-            PathFingerprint pathFingerprint;
-            while (!_join.TryGetValue(fullFilePath, out pathFingerprint))
-            {
-                pathFingerprint = new PathFingerprint();
+            if (null != pathFingerprint.FileFingerprint)
+                throw new InvalidOperationException("Duplicate file fingerprint for " + fileFingerprint.FullFilePath);
 
-                if (_join.TryAdd(fullFilePath, pathFingerprint))
-                    break;
-            }
+            pathFingerprint.FileFingerprint = fileFingerprint;
 
-            return pathFingerprint;
-        }
-
-        Task SetFileFingerprintAsync(FileFingerprint fileFingerprint)
-        {
-            var pathFingerprint = GetPathFingerprint(fileFingerprint.FullFilePath);
-
-            AnnotatedPath[] annotatedPaths;
-
-            lock (pathFingerprint)
-            {
-                if (null != pathFingerprint.FileFingerprint)
-                    throw new InvalidOperationException("Duplicate file fingerprint for " + fileFingerprint.FullFilePath);
-
-                pathFingerprint.FileFingerprint = fileFingerprint;
-
-                if (0 == pathFingerprint.AnnotatedPaths.Count)
-                    return Task.CompletedTask;
-
-                annotatedPaths = pathFingerprint.AnnotatedPaths.Values.ToArray();
-            }
-
-            var tasks = annotatedPaths.Select(ap => _targetBlock.SendAsync(Tuple.Create(ap, fileFingerprint)));
-
-            return Task.WhenAll(tasks);
-        }
-
-        Task SetAnnotatedPathAsync(AnnotatedPath annotatedPath)
-        {
-            var pathFingerprint = GetPathFingerprint(annotatedPath.FileInfo.FullName);
-
-            var key = Tuple.Create(annotatedPath.Collection, annotatedPath.RelativePath);
-
-            FileFingerprint fileFingerprint;
-
-            lock (pathFingerprint)
-            {
-                if (pathFingerprint.AnnotatedPaths.ContainsKey(key))
-                    throw new InvalidOperationException("Duplicate collection/relative path for " +
-                                                        annotatedPath.FileInfo.FullName);
-
-                pathFingerprint.AnnotatedPaths[key] = annotatedPath;
-
-                fileFingerprint = pathFingerprint.FileFingerprint;
-            }
-
-            if (null == fileFingerprint)
+            if (0 == pathFingerprint.AnnotatedPaths.Count)
                 return Task.CompletedTask;
 
-            return _targetBlock.SendAsync(Tuple.Create(annotatedPath, fileFingerprint));
+            annotatedPaths = pathFingerprint.AnnotatedPaths.Values.ToArray();
         }
 
-        class PathFingerprint
+        var tasks = annotatedPaths.Select(ap => _targetBlock.SendAsync(Tuple.Create(ap, fileFingerprint)));
+
+        return Task.WhenAll(tasks);
+    }
+
+    Task SetAnnotatedPathAsync(AnnotatedPath annotatedPath)
+    {
+        var pathFingerprint = GetPathFingerprint(annotatedPath.FileInfo.FullName);
+
+        var key = Tuple.Create(annotatedPath.Collection, annotatedPath.RelativePath);
+
+        FileFingerprint fileFingerprint;
+
+        lock (pathFingerprint)
         {
-            public readonly Dictionary<Tuple<string, string>, AnnotatedPath> AnnotatedPaths = new();
+            if (pathFingerprint.AnnotatedPaths.ContainsKey(key))
+            {
+                throw new InvalidOperationException("Duplicate collection/relative path for " +
+                    annotatedPath.FileInfo.FullName);
+            }
 
-            public FileFingerprint FileFingerprint;
+            pathFingerprint.AnnotatedPaths[key] = annotatedPath;
+
+            fileFingerprint = pathFingerprint.FileFingerprint;
         }
+
+        if (null == fileFingerprint)
+            return Task.CompletedTask;
+
+        return _targetBlock.SendAsync(Tuple.Create(annotatedPath, fileFingerprint));
+    }
+
+    class PathFingerprint
+    {
+        public readonly Dictionary<Tuple<string, string>, AnnotatedPath> AnnotatedPaths = new();
+
+        public FileFingerprint FileFingerprint;
     }
 }

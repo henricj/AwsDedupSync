@@ -24,102 +24,101 @@ using System.Diagnostics;
 using System.Linq;
 using System.Threading.Tasks;
 
-namespace AwsSyncer.Utility
+namespace AwsSyncer.Utility;
+
+public class TaskCollector
 {
-    public class TaskCollector
+    public static readonly TaskCollector Default = new();
+    readonly object _lock = new();
+    readonly Dictionary<Task, string> _tasks = new();
+
+    //[Conditional("DEBUG")]
+    public void Add(Task task, string description)
     {
-        public static readonly TaskCollector Default = new();
-        readonly object _lock = new();
-        readonly Dictionary<Task, string> _tasks = new();
-
-        //[Conditional("DEBUG")]
-        public void Add(Task task, string description)
+        if (task.IsCompleted)
         {
-            if (task.IsCompleted)
-            {
-                ReportException(task, description);
-
-                return;
-            }
-
-            lock (_lock)
-            {
-                Debug.Assert(!_tasks.ContainsKey(task));
-                _tasks[task] = description;
-            }
-
-            task.ContinueWith(Cleanup);
-        }
-
-        [Conditional("DEBUG")]
-        public void Wait()
-        {
-            KeyValuePair<Task, string>[] tasks = null;
-
-            lock (_lock)
-            {
-                if (_tasks.Count > 0)
-                    tasks = _tasks.ToArray();
-            }
-
-            if (null == tasks || 0 == tasks.Length)
-                return;
-
-            try
-            {
-                Task.WhenAll(tasks.Select(t => t.Key)).Wait();
-            }
-            catch (AggregateException ex)
-            {
-                foreach (var e in ex.InnerExceptions)
-                    Debug.WriteLine("TaskCollector.Wait() Task wait failed: " + e.Message);
-            }
-            catch (Exception ex)
-            {
-                Debug.WriteLine("TaskCollector.Wait() Task wait failed: " + ex.Message);
-            }
-        }
-
-        void Cleanup(Task task)
-        {
-            Debug.Assert(task.IsCompleted);
-
-            var wasRemoved = false;
-            string description;
-
-            lock (_lock)
-            {
-                if (_tasks.TryGetValue(task, out description))
-                    wasRemoved = _tasks.Remove(task);
-            }
-
-            Debug.Assert(wasRemoved, description ?? "No description");
-
             ReportException(task, description);
+
+            return;
         }
 
-        static void ReportException(Task task, string description)
+        lock (_lock)
         {
-            try
-            {
-                var ex = task.Exception;
+            Debug.Assert(!_tasks.ContainsKey(task));
+            _tasks[task] = description;
+        }
 
-                if (null != ex)
-                {
-                    Debug.WriteLine("TaskCollector.Cleanup() task {0} failed: {1}{2}{3}", description, ex, Environment.NewLine,
-                        ex.StackTrace);
+        task.ContinueWith(Cleanup);
+    }
 
-                    if (Debugger.IsAttached)
-                        Debugger.Break();
-                }
-            }
-            catch (Exception ex2)
+    [Conditional("DEBUG")]
+    public void Wait()
+    {
+        KeyValuePair<Task, string>[] tasks = null;
+
+        lock (_lock)
+        {
+            if (_tasks.Count > 0)
+                tasks = _tasks.ToArray();
+        }
+
+        if (null == tasks || 0 == tasks.Length)
+            return;
+
+        try
+        {
+            Task.WhenAll(tasks.Select(t => t.Key)).Wait();
+        }
+        catch (AggregateException ex)
+        {
+            foreach (var e in ex.InnerExceptions)
+                Debug.WriteLine("TaskCollector.Wait() Task wait failed: " + e.Message);
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine("TaskCollector.Wait() Task wait failed: " + ex.Message);
+        }
+    }
+
+    void Cleanup(Task task)
+    {
+        Debug.Assert(task.IsCompleted);
+
+        var wasRemoved = false;
+        string description;
+
+        lock (_lock)
+        {
+            if (_tasks.TryGetValue(task, out description))
+                wasRemoved = _tasks.Remove(task);
+        }
+
+        Debug.Assert(wasRemoved, description ?? "No description");
+
+        ReportException(task, description);
+    }
+
+    static void ReportException(Task task, string description)
+    {
+        try
+        {
+            var ex = task.Exception;
+
+            if (null != ex)
             {
-                Debug.WriteLine("TaskCollector.Cleanup() cleanup of task {0} failed: {1}", description, ex2);
+                Debug.WriteLine("TaskCollector.Cleanup() task {0} failed: {1}{2}{3}", description, ex, Environment.NewLine,
+                    ex.StackTrace);
 
                 if (Debugger.IsAttached)
                     Debugger.Break();
             }
+        }
+        catch (Exception ex2)
+        {
+            Debug.WriteLine("TaskCollector.Cleanup() cleanup of task {0} failed: {1}", description, ex2);
+
+            if (Debugger.IsAttached)
+                Debugger.Break();
         }
     }
 }

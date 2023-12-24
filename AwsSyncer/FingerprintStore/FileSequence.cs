@@ -25,99 +25,99 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 
-namespace AwsSyncer.FingerprintStore
+namespace AwsSyncer.FingerprintStore;
+
+public class FileSequence
 {
-    public class FileSequence
+    static readonly List<FileInfo> EmptyFiles = new();
+    readonly DirectoryInfo _directory;
+    List<FileInfo> _files = EmptyFiles;
+
+    public IEnumerable<FileInfo> Files => _files;
+
+    public FileSequence(DirectoryInfo directory) => _directory = directory ?? throw new ArgumentNullException(nameof(directory));
+
+    public void Rescan()
     {
-        static readonly List<FileInfo> EmptyFiles = new();
-        readonly DirectoryInfo _directory;
-        List<FileInfo> _files = EmptyFiles;
+        _directory.Refresh();
 
-        public FileSequence(DirectoryInfo directory)
+        if (!_directory.Exists)
         {
-            _directory = directory ?? throw new ArgumentNullException(nameof(directory));
+            _files = EmptyFiles;
+            return;
         }
 
-        public IEnumerable<FileInfo> Files => _files;
-
-        public void Rescan()
-        {
-            _directory.Refresh();
-
-            if (!_directory.Exists)
+        _files = _directory.EnumerateFiles()
+            .Select(file =>
             {
-                _files = EmptyFiles;
-                return;
-            }
+                if (!int.TryParse(file.Name, NumberStyles.Integer, CultureInfo.InvariantCulture, out var fileNumber))
+                    return null;
 
-            _files = _directory.EnumerateFiles()
-                .Select(file =>
+                if (fileNumber < 1)
+                    return null;
+
+                return new
                 {
-                    if (!int.TryParse(file.Name, NumberStyles.Integer, CultureInfo.InvariantCulture, out var fileNumber))
-                        return null;
+                    File = file,
+                    Number = fileNumber
+                };
+            })
+            .Where(fn => null != fn)
+            .OrderBy(fn => fn.Number)
+            .Select(fn => fn.File)
+            .ToList();
+    }
 
-                    if (fileNumber < 1)
-                        return null;
+    public FileInfo NewFile()
+    {
+        Rescan();
 
-                    return new { File = file, Number = fileNumber };
-                })
-                .Where(fn => null != fn)
-                .OrderBy(fn => fn.Number)
-                .Select(fn => fn.File)
-                .ToList();
+        if (!_directory.Exists)
+            _directory.Create();
+
+        Prune();
+
+        var count = 1;
+
+        if (_files.Count > 0)
+            count = int.Parse(_files[^1].Name, CultureInfo.InvariantCulture) + 1;
+
+        var fileName = Path.Combine(_directory.FullName, count.ToString(CultureInfo.InvariantCulture));
+
+        var fileInfo = new FileInfo(fileName);
+
+        _files.Add(fileInfo);
+
+        return fileInfo;
+    }
+
+    public void Prune()
+    {
+        var change = false;
+
+        foreach (var file in _files)
+        {
+            if (file.Exists && file.Length >= 5)
+                continue;
+
+            // Make sure the file information is not stale.
+            file.Refresh();
+
+            if (file.Exists && file.Length >= 5)
+                continue;
+
+            try
+            {
+                file.Delete();
+                change = true;
+            }
+            catch (IOException ex)
+            {
+                Debug.WriteLine($"Unable to delete file {file.FullName}: {ex.Message}");
+            }
         }
 
-        public FileInfo NewFile()
-        {
+        if (change)
             Rescan();
-
-            if (!_directory.Exists)
-                _directory.Create();
-
-            Prune();
-
-            var count = 1;
-
-            if (_files.Count > 0)
-                count = int.Parse(_files[^1].Name, CultureInfo.InvariantCulture) + 1;
-
-            var fileName = Path.Combine(_directory.FullName, count.ToString(CultureInfo.InvariantCulture));
-
-            var fileInfo = new FileInfo(fileName);
-
-            _files.Add(fileInfo);
-
-            return fileInfo;
-        }
-
-        public void Prune()
-        {
-            var change = false;
-
-            foreach (var file in _files)
-            {
-                if (file.Exists && file.Length >= 5)
-                    continue;
-
-                // Make sure the file information is not stale.
-                file.Refresh();
-
-                if (file.Exists && file.Length >= 5)
-                    continue;
-
-                try
-                {
-                    file.Delete();
-                    change = true;
-                }
-                catch (IOException ex)
-                {
-                    Debug.WriteLine($"Unable to delete file {file.FullName}: {ex.Message}");
-                }
-            }
-
-            if (change)
-                Rescan();
-        }
     }
 }

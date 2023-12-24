@@ -20,53 +20,52 @@
 
 using System;
 
-namespace AwsSyncer.Types
+namespace AwsSyncer.Types;
+
+public sealed class CollectionPath : IEquatable<CollectionPath>
 {
-    public sealed class CollectionPath : IEquatable<CollectionPath>
+    public string Collection { get; }
+    public string Path { get; }
+
+    public CollectionPath(string collection, string path)
     {
-        public CollectionPath(string collection, string path)
-        {
-            Collection = collection ?? throw new ArgumentNullException(nameof(collection));
-            Path = path ?? throw new ArgumentNullException(nameof(path));
-        }
-
-        public string Collection { get; }
-        public string Path { get; }
-
-        public bool Equals(CollectionPath other)
-        {
-            if (other is null)
-                return false;
-            if (ReferenceEquals(this, other))
-                return true;
-
-            return string.Equals(Collection, other.Collection, StringComparison.OrdinalIgnoreCase) &&
-                   string.Equals(Path, other.Path, StringComparison.OrdinalIgnoreCase);
-        }
-
-        public override string ToString() => '[' + Collection + ']' + Path;
-
-        public override bool Equals(object obj)
-        {
-            if (obj is null)
-                return false;
-            if (ReferenceEquals(this, obj))
-                return true;
-
-            return obj is CollectionPath path && Equals(path);
-        }
-
-        public override int GetHashCode()
-        {
-            unchecked
-            {
-                return (StringComparer.OrdinalIgnoreCase.GetHashCode(Collection) * 397) ^
-                       StringComparer.OrdinalIgnoreCase.GetHashCode(Path);
-            }
-        }
-
-        public static bool operator ==(CollectionPath left, CollectionPath right) => Equals(left, right);
-
-        public static bool operator !=(CollectionPath left, CollectionPath right) => !Equals(left, right);
+        Collection = collection ?? throw new ArgumentNullException(nameof(collection));
+        Path = path ?? throw new ArgumentNullException(nameof(path));
     }
+
+    public bool Equals(CollectionPath other)
+    {
+        if (other is null)
+            return false;
+        if (ReferenceEquals(this, other))
+            return true;
+
+        return string.Equals(Collection, other.Collection, StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(Path, other.Path, StringComparison.OrdinalIgnoreCase);
+    }
+
+    public override string ToString() => '[' + Collection + ']' + Path;
+
+    public override bool Equals(object obj)
+    {
+        if (obj is null)
+            return false;
+        if (ReferenceEquals(this, obj))
+            return true;
+
+        return obj is CollectionPath path && Equals(path);
+    }
+
+    public override int GetHashCode()
+    {
+        unchecked
+        {
+            return (StringComparer.OrdinalIgnoreCase.GetHashCode(Collection) * 397) ^
+                StringComparer.OrdinalIgnoreCase.GetHashCode(Path);
+        }
+    }
+
+    public static bool operator ==(CollectionPath left, CollectionPath right) => Equals(left, right);
+
+    public static bool operator !=(CollectionPath left, CollectionPath right) => !Equals(left, right);
 }

@@ -26,41 +26,37 @@ using System.Threading.Tasks;
 using Amazon.S3;
 using Amazon.S3.Model;
 
-namespace AwsSyncer.AWS
+namespace AwsSyncer.AWS;
+
+public class S3PutBase
 {
-    public class S3PutBase
+    protected readonly IAmazonS3 AmazonS3;
+
+    protected S3PutBase(IAmazonS3 amazonS3) => AmazonS3 = amazonS3 ?? throw new ArgumentNullException(nameof(amazonS3));
+
+    protected async Task<PutObjectResponse> PutAsync(IS3PutRequest request, CancellationToken cancellationToken)
     {
-        protected readonly IAmazonS3 AmazonS3;
+        var response = await AmazonS3.PutObjectAsync(request.Request, cancellationToken).ConfigureAwait(false);
 
-        protected S3PutBase(IAmazonS3 amazonS3)
-        {
-            AmazonS3 = amazonS3 ?? throw new ArgumentNullException(nameof(amazonS3));
-        }
+        if (response.HttpStatusCode != HttpStatusCode.OK)
+            Debug.WriteLine("now what?");
 
-        protected async Task<PutObjectResponse> PutAsync(IS3PutRequest request, CancellationToken cancellationToken)
-        {
-            var response = await AmazonS3.PutObjectAsync(request.Request, cancellationToken).ConfigureAwait(false);
+        if (!string.IsNullOrEmpty(request.ETag) &&
+            !string.Equals(response.ETag, request.ETag, StringComparison.OrdinalIgnoreCase))
+            Debug.WriteLine($"Unexpected ETag mismatch: {response.ETag} != {request.ETag}");
 
-            if (response.HttpStatusCode != HttpStatusCode.OK)
-                Debug.WriteLine("now what?");
+        return response;
+    }
 
-            if (!string.IsNullOrEmpty(request.ETag) &&
-                !string.Equals(response.ETag, request.ETag, StringComparison.OrdinalIgnoreCase))
-                Debug.WriteLine($"Unexpected ETag mismatch: {response.ETag} != {request.ETag}");
+    protected interface IS3PutRequest
+    {
+        string ETag { get; }
+        PutObjectRequest Request { get; }
+    }
 
-            return response;
-        }
-
-        protected interface IS3PutRequest
-        {
-            string ETag { get; }
-            PutObjectRequest Request { get; }
-        }
-
-        protected class S3PutRequest : IS3PutRequest
-        {
-            public string ETag { get; set; }
-            public PutObjectRequest Request { get; set; }
-        }
+    protected class S3PutRequest : IS3PutRequest
+    {
+        public string ETag { get; set; }
+        public PutObjectRequest Request { get; set; }
     }
 }

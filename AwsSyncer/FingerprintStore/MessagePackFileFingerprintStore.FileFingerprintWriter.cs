@@ -28,98 +28,92 @@ using System.Threading.Tasks;
 using AwsSyncer.Types;
 using MessagePack;
 
-namespace AwsSyncer.FingerprintStore
+namespace AwsSyncer.FingerprintStore;
+
+public sealed partial class MessagePackFileFingerprintStore
 {
-    public sealed partial class MessagePackFileFingerprintStore
+    sealed class FileFingerprintWriter : IDisposable
     {
-        sealed class FileFingerprintWriter : IDisposable
+        readonly ArrayBufferWriter<byte> _fingerprintWriter = new();
+        readonly Pipe _pipe = new();
+        Task _compressorTask;
+        Stream _stream;
+
+        public void Dispose() => _stream?.Dispose();
+
+        public void Open(FileInfo fi)
         {
-            readonly ArrayBufferWriter<byte> _fingerprintWriter = new();
-            readonly Pipe _pipe = new();
-            Task _compressorTask;
-            Stream _stream;
+            if (null != _stream)
+                throw new InvalidOperationException("The writer is already open");
 
-            public void Dispose()
+            _stream = OpenMsgPackFileForWrite(fi);
+
+            _compressorTask = Task.Run(RunCompressorAsync);
+        }
+
+        async Task RunCompressorAsync()
+        {
+            var reader = _pipe.Reader;
+            var cancellationToken = default(CancellationToken);
+
+            try
             {
-                _stream?.Dispose();
-            }
+                var outputBufferedStream = new BufferedStream(_stream, 128 * 1024);
+                var deflate = new DeflateStream(outputBufferedStream, CompressionLevel.Optimal);
+                var inputBufferedStream = new BufferedStream(deflate, 64 * 1024);
 
-            public void Open(FileInfo fi)
-            {
-                if (null != _stream)
-                    throw new InvalidOperationException("The writer is already open");
-
-                _stream = OpenMsgPackFileForWrite(fi);
-
-                _compressorTask = Task.Run(RunCompressorAsync);
-            }
-
-            async Task RunCompressorAsync()
-            {
-                var reader = _pipe.Reader;
-                var cancellationToken = default(CancellationToken);
-
-                try
+                await using (outputBufferedStream.ConfigureAwait(false))
+                await using (deflate.ConfigureAwait(false))
+                await using (inputBufferedStream.ConfigureAwait(false))
                 {
-                    var outputBufferedStream = new BufferedStream(_stream, 128 * 1024);
-                    var deflate = new DeflateStream(outputBufferedStream, CompressionLevel.Optimal);
-                    var inputBufferedStream = new BufferedStream(deflate, 64 * 1024);
-
-                    await using (outputBufferedStream.ConfigureAwait(false))
-                    await using (deflate.ConfigureAwait(false))
-                    await using (inputBufferedStream.ConfigureAwait(false))
+                    for (;;)
                     {
-                        for (;;)
-                        {
-                            if (!reader.TryRead(out var readResult))
-                                readResult = await reader.ReadAsync(cancellationToken).ConfigureAwait(false);
+                        if (!reader.TryRead(out var readResult))
+                            readResult = await reader.ReadAsync(cancellationToken).ConfigureAwait(false);
 
-                            var buffer = readResult.Buffer;
+                        var buffer = readResult.Buffer;
 
-                            await inputBufferedStream.WriteAsync(buffer, cancellationToken).ConfigureAwait(false);
+                        await inputBufferedStream.WriteAsync(buffer, cancellationToken).ConfigureAwait(false);
 
-                            buffer = buffer.Slice(buffer.Length);
+                        buffer = buffer.Slice(buffer.Length);
 
-                            reader.AdvanceTo(buffer.Start, buffer.End);
+                        reader.AdvanceTo(buffer.Start, buffer.End);
 
-                            if (readResult.IsCompleted)
-                                break;
-                        }
-
-                        await inputBufferedStream.FlushAsync(cancellationToken).ConfigureAwait(false);
+                        if (readResult.IsCompleted)
+                            break;
                     }
-                }
-                finally
-                {
-                    await reader.CompleteAsync().ConfigureAwait(false);
+
+                    await inputBufferedStream.FlushAsync(cancellationToken).ConfigureAwait(false);
                 }
             }
-
-            public async Task CloseAsync()
+            finally
             {
-                await _pipe.Writer.CompleteAsync().ConfigureAwait(false);
-
-                await _compressorTask.ConfigureAwait(false);
-            }
-
-            static void IntSerializer(IBufferWriter<byte> bufferWriter, int value)
-            {
-                var writer = new MessagePackWriter(bufferWriter);
-
-                IntFormatter.Serialize(ref writer, value, MessagePackSerializerOptions.Standard);
-            }
-
-            public void Write(FileFingerprint fileFingerprint)
-            {
-                var writer = _pipe.Writer;
-
-                MessagePackSerializer.Serialize(writer, fileFingerprint);
-            }
-
-            public async ValueTask FlushAsync(CancellationToken cancellationToken)
-            {
-                await _pipe.Writer.FlushAsync(cancellationToken).ConfigureAwait(false);
+                await reader.CompleteAsync().ConfigureAwait(false);
             }
         }
+
+        public async Task CloseAsync()
+        {
+            await _pipe.Writer.CompleteAsync().ConfigureAwait(false);
+
+            await _compressorTask.ConfigureAwait(false);
+        }
+
+        static void IntSerializer(IBufferWriter<byte> bufferWriter, int value)
+        {
+            var writer = new MessagePackWriter(bufferWriter);
+
+            IntFormatter.Serialize(ref writer, value, MessagePackSerializerOptions.Standard);
+        }
+
+        public void Write(FileFingerprint fileFingerprint)
+        {
+            var writer = _pipe.Writer;
+
+            MessagePackSerializer.Serialize(writer, fileFingerprint);
+        }
+
+        public async ValueTask FlushAsync(CancellationToken cancellationToken) =>
+            await _pipe.Writer.FlushAsync(cancellationToken).ConfigureAwait(false);
     }
 }

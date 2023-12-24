@@ -32,126 +32,130 @@ using AwsSyncer.Types;
 using AwsSyncer.Utility;
 using Microsoft.Extensions.Configuration;
 
-namespace AwsDedupSync
+namespace AwsDedupSync;
+
+public class S3PathSyncer
 {
-    public class S3PathSyncer
+    static readonly DataflowLinkOptions DataflowLinkOptionsPropagateEnabled
+        = new() { PropagateCompletion = true };
+
+    readonly S3BlobUploader _s3BlobUploader;
+    readonly S3LinkCreator _s3LinkCreator;
+
+    public S3Settings S3Settings { get; } = new()
     {
-        static readonly DataflowLinkOptions DataflowLinkOptionsPropagateEnabled
-            = new() { PropagateCompletion = true };
+        ActuallyWrite = false,
+        UpdateLinks = false,
+        UploadBlobs = false
+    };
 
-        readonly S3BlobUploader _s3BlobUploader;
-        readonly S3LinkCreator _s3LinkCreator;
+    public S3PathSyncer()
+    {
+        _s3BlobUploader = new(S3Settings);
+        _s3LinkCreator = new(S3Settings);
+    }
 
-        public S3PathSyncer()
+    public async Task SyncPathsAsync(IConfiguration config, IEnumerable<string> paths, Func<FileInfo, bool> filePredicate,
+        CancellationToken cancellationToken)
+    {
+        var bucket = config["Bucket"];
+
+        if (string.IsNullOrWhiteSpace(bucket))
+            throw new KeyNotFoundException("No bucket name found in the application settings");
+
+        Console.WriteLine($"Targeting bucket {bucket}");
+
+        // BEWARE:  This could cause trouble if there are
+        // any case-sensitive paths involved.
+        var namedPaths = (from arg in paths
+                let split = arg.IndexOf('=')
+                let validSplit = split > 0 && split < arg.Length - 1
+                select new CollectionPath(validSplit ? arg[..split] : null,
+                    PathUtil.ForceTrailingSlash(Path.GetFullPath(validSplit ? arg[(split + 1)..] : arg))))
+            .Distinct()
+            .ToArray();
+
+        using var blobManager =
+            new BlobManager(new FileFingerprintManager(new MessagePackFileFingerprintStore(bucket), new StreamFingerprinter()))
+                as IBlobManager;
+        try
         {
-            _s3BlobUploader = new S3BlobUploader(S3Settings);
-            _s3LinkCreator = new S3LinkCreator(S3Settings);
-        }
+            using var awsManager = AwsManagerFactory.Create(bucket, config);
+            var uniqueFingerprintBlock = new BufferBlock<Tuple<FileFingerprint, AnnotatedPath>>();
+            var linkBlock = new BufferBlock<Tuple<AnnotatedPath, FileFingerprint>>();
 
-        public S3Settings S3Settings { get; } = new() { ActuallyWrite = false, UpdateLinks = false, UploadBlobs = false };
+            var uniqueFingerprints = new HashSet<BlobFingerprint>();
 
-        public async Task SyncPathsAsync(IConfiguration config, IEnumerable<string> paths, Func<FileInfo, bool> filePredicate,
-            CancellationToken cancellationToken)
-        {
-            var bucket = config["Bucket"];
-
-            if (string.IsNullOrWhiteSpace(bucket))
-                throw new KeyNotFoundException("No bucket name found in the application settings");
-
-            Console.WriteLine($"Targeting bucket {bucket}");
-
-            // BEWARE:  This could cause trouble if there are
-            // any case-sensitive paths involved.
-            var namedPaths = (from arg in paths
-                    let split = arg.IndexOf('=')
-                    let validSplit = split > 0 && split < arg.Length - 1
-                    select new CollectionPath(validSplit ? arg[..split] : null,
-                        PathUtil.ForceTrailingSlash(Path.GetFullPath(validSplit ? arg[(split + 1)..] : arg))))
-                .Distinct()
-                .ToArray();
-
-            using var blobManager =
-                new BlobManager(new FileFingerprintManager(new MessagePackFileFingerprintStore(bucket), new StreamFingerprinter()))
-                    as IBlobManager;
-            try
-            {
-                using var awsManager = AwsManagerFactory.Create(bucket, config);
-                var uniqueFingerprintBlock = new BufferBlock<Tuple<FileFingerprint, AnnotatedPath>>();
-                var linkBlock = new BufferBlock<Tuple<AnnotatedPath, FileFingerprint>>();
-
-                var uniqueFingerprints = new HashSet<BlobFingerprint>();
-
-                var uniqueFingerprintFilterBlock = new ActionBlock<Tuple<AnnotatedPath, FileFingerprint>>(
-                    t =>
-                    {
-                        if (!uniqueFingerprints.Add(t.Item2.Fingerprint))
-                            return Task.CompletedTask;
-
-                        return uniqueFingerprintBlock.SendAsync(Tuple.Create(t.Item2, t.Item1), cancellationToken);
-                    }, new ExecutionDataflowBlockOptions { CancellationToken = cancellationToken });
-
-                var uniqueCompletionTask = uniqueFingerprintFilterBlock
-                    .Completion.ContinueWith(_ => { uniqueFingerprintBlock.Complete(); }, CancellationToken.None);
-
-                TaskCollector.Default.Add(uniqueCompletionTask, "Unique filter completion");
-
-                var joinedBroadcastBlock = new BroadcastBlock<Tuple<AnnotatedPath, FileFingerprint>>(t => t,
-                    new DataflowBlockOptions { CancellationToken = cancellationToken });
-
-                joinedBroadcastBlock.LinkTo(linkBlock, DataflowLinkOptionsPropagateEnabled);
-                joinedBroadcastBlock.LinkTo(uniqueFingerprintFilterBlock, DataflowLinkOptionsPropagateEnabled);
-
-                var tasks = new List<Task>();
-
-                var loadBlobTask = blobManager.LoadAsync(namedPaths, filePredicate, joinedBroadcastBlock, cancellationToken);
-
-                tasks.Add(loadBlobTask);
-
-                if (S3Settings.UpdateLinks)
+            var uniqueFingerprintFilterBlock = new ActionBlock<Tuple<AnnotatedPath, FileFingerprint>>(
+                t =>
                 {
-                    var updateLinksTask = _s3LinkCreator.UpdateLinksAsync(awsManager, linkBlock, cancellationToken);
+                    if (!uniqueFingerprints.Add(t.Item2.Fingerprint))
+                        return Task.CompletedTask;
 
-                    tasks.Add(updateLinksTask);
-                }
+                    return uniqueFingerprintBlock.SendAsync(Tuple.Create(t.Item2, t.Item1), cancellationToken);
+                }, new() { CancellationToken = cancellationToken });
 
-                Task uploadBlobsTask = null;
-                var scanBlobAsync = Task.Run(async () =>
+            var uniqueCompletionTask = uniqueFingerprintFilterBlock
+                .Completion.ContinueWith(_ => { uniqueFingerprintBlock.Complete(); }, CancellationToken.None);
+
+            TaskCollector.Default.Add(uniqueCompletionTask, "Unique filter completion");
+
+            var joinedBroadcastBlock = new BroadcastBlock<Tuple<AnnotatedPath, FileFingerprint>>(t => t,
+                new() { CancellationToken = cancellationToken });
+
+            joinedBroadcastBlock.LinkTo(linkBlock, DataflowLinkOptionsPropagateEnabled);
+            joinedBroadcastBlock.LinkTo(uniqueFingerprintFilterBlock, DataflowLinkOptionsPropagateEnabled);
+
+            var tasks = new List<Task>();
+
+            var loadBlobTask = blobManager.LoadAsync(namedPaths, filePredicate, joinedBroadcastBlock, cancellationToken);
+
+            tasks.Add(loadBlobTask);
+
+            if (S3Settings.UpdateLinks)
+            {
+                var updateLinksTask = _s3LinkCreator.UpdateLinksAsync(awsManager, linkBlock, cancellationToken);
+
+                tasks.Add(updateLinksTask);
+            }
+
+            Task uploadBlobsTask = null;
+            var scanBlobAsync = Task.Run(async () =>
+            {
+                // ReSharper disable once AccessToDisposedClosure
+                var knownObjects = await awsManager.ScanAsync(cancellationToken).ConfigureAwait(false);
+
+                if (S3Settings.UploadBlobs)
                 {
                     // ReSharper disable once AccessToDisposedClosure
-                    var knownObjects = await awsManager.ScanAsync(cancellationToken).ConfigureAwait(false);
+                    uploadBlobsTask = _s3BlobUploader.UploadBlobsAsync(awsManager, uniqueFingerprintBlock, knownObjects,
+                        cancellationToken);
+                }
+            }, cancellationToken);
 
-                    if (S3Settings.UploadBlobs)
-                    {
-                        // ReSharper disable once AccessToDisposedClosure
-                        uploadBlobsTask = _s3BlobUploader.UploadBlobsAsync(awsManager, uniqueFingerprintBlock, knownObjects,
-                            cancellationToken);
-                    }
-                }, cancellationToken);
+            tasks.Add(scanBlobAsync);
 
-                tasks.Add(scanBlobAsync);
+            await WaitAllWithWake(tasks).ConfigureAwait(false);
 
-                await WaitAllWithWake(tasks).ConfigureAwait(false);
-
-                if (null != uploadBlobsTask)
-                    await uploadBlobsTask.ConfigureAwait(false);
-            }
-            finally
-            {
-                await blobManager.ShutdownAsync(cancellationToken).ConfigureAwait(false);
-            }
+            if (null != uploadBlobsTask)
+                await uploadBlobsTask.ConfigureAwait(false);
         }
-
-        static async Task WaitAllWithWake(ICollection<Task> tasks)
+        finally
         {
-            for (;;)
-            {
-                var pendingTasks = tasks.Where(t => !t.IsCompleted).ToArray();
+            await blobManager.ShutdownAsync(cancellationToken).ConfigureAwait(false);
+        }
+    }
 
-                if (0 == pendingTasks.Length)
-                    break;
+    static async Task WaitAllWithWake(ICollection<Task> tasks)
+    {
+        for (;;)
+        {
+            var pendingTasks = tasks.Where(t => !t.IsCompleted).ToArray();
 
-                await Task.WhenAny(Task.WhenAll(pendingTasks), Task.Delay(TimeSpan.FromSeconds(3))).ConfigureAwait(false);
-            }
+            if (0 == pendingTasks.Length)
+                break;
+
+            await Task.WhenAny(Task.WhenAll(pendingTasks), Task.Delay(TimeSpan.FromSeconds(3))).ConfigureAwait(false);
         }
     }
 }

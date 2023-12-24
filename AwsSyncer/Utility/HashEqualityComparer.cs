@@ -22,43 +22,42 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 
-namespace AwsSyncer.Utility
+namespace AwsSyncer.Utility;
+
+/// <inheritdoc />
+/// <summary>
+///     Generate a quick hash code for byte arrays that are known
+///     to be uniformly random.
+/// </summary>
+public sealed class HashEqualityComparer : IEqualityComparer<byte[]>
 {
-    /// <inheritdoc />
-    /// <summary>
-    ///     Generate a quick hash code for byte arrays that are known
-    ///     to be uniformly random.
-    /// </summary>
-    public sealed class HashEqualityComparer : IEqualityComparer<byte[]>
+    public bool Equals(byte[] x, byte[] y)
     {
-        public bool Equals(byte[] x, byte[] y)
+        if (ReferenceEquals(x, y))
+            return true;
+
+        if (x is null || y is null)
+            return false;
+
+        if (x.Length != y.Length)
+            return false;
+
+        return x.SequenceEqual(y);
+    }
+
+    public int GetHashCode(byte[] obj)
+    {
+        if (obj.Length >= sizeof(int))
+            return BitConverter.ToInt32(obj, 0);
+
+        var code = 0;
+
+        foreach (var v in obj)
         {
-            if (ReferenceEquals(x, y))
-                return true;
-
-            if (x is null || y is null)
-                return false;
-
-            if (x.Length != y.Length)
-                return false;
-
-            return x.SequenceEqual(y);
+            code <<= 8;
+            code |= v;
         }
 
-        public int GetHashCode(byte[] obj)
-        {
-            if (obj.Length >= sizeof(int))
-                return BitConverter.ToInt32(obj, 0);
-
-            var code = 0;
-
-            foreach (var v in obj)
-            {
-                code <<= 8;
-                code |= v;
-            }
-
-            return code;
-        }
+        return code;
     }
 }

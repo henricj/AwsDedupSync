@@ -24,120 +24,119 @@ using System.Diagnostics;
 using System.IO;
 using System.Text;
 
-namespace AwsSyncer.Utility
+namespace AwsSyncer.Utility;
+
+public static class PathUtil
 {
-    public static class PathUtil
+    // From http://stackoverflow.com/a/340454/2875705
+    /// <summary>
+    ///     Creates a relative path from one file or folder to another.
+    /// </summary>
+    /// <param name="fromPath">Contains the directory that defines the start of the relative path.</param>
+    /// <param name="toPath">Contains the path that defines the endpoint of the relative path.</param>
+    /// <returns>The relative path from the start directory to the end path.</returns>
+    /// <exception cref="ArgumentNullException"></exception>
+    /// <exception cref="UriFormatException"></exception>
+    /// <exception cref="InvalidOperationException"></exception>
+    public static string MakeRelativePath(string fromPath, string toPath)
     {
-        // From http://stackoverflow.com/a/340454/2875705
-        /// <summary>
-        ///     Creates a relative path from one file or folder to another.
-        /// </summary>
-        /// <param name="fromPath">Contains the directory that defines the start of the relative path.</param>
-        /// <param name="toPath">Contains the path that defines the endpoint of the relative path.</param>
-        /// <returns>The relative path from the start directory to the end path.</returns>
-        /// <exception cref="ArgumentNullException"></exception>
-        /// <exception cref="UriFormatException"></exception>
-        /// <exception cref="InvalidOperationException"></exception>
-        public static string MakeRelativePath(string fromPath, string toPath)
+        if (string.IsNullOrWhiteSpace(fromPath))
+            throw new ArgumentNullException(nameof(fromPath));
+        if (string.IsNullOrWhiteSpace(toPath))
+            throw new ArgumentNullException(nameof(toPath));
+
+        var fromUri = new Uri(fromPath);
+        var toUri = new Uri(toPath);
+
+        if (fromUri.Scheme != toUri.Scheme)
+            return toPath;
+
+        var relativeUri = fromUri.MakeRelativeUri(toUri);
+        var relativePath = Uri.UnescapeDataString(relativeUri.ToString());
+
+        if (toUri.Scheme.ToUpperInvariant() == "FILE")
+            relativePath = relativePath.Replace(Path.AltDirectorySeparatorChar, Path.DirectorySeparatorChar);
+
+        return relativePath;
+    }
+
+    /// <summary>
+    ///     Remove non-ASCII characters.  Remove leading and trailing white-space.
+    /// </summary>
+    /// <param name="value"></param>
+    /// <returns></returns>
+    public static string NormalizeAsciiName(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return null;
+
+        // This really isn't enough.  We should be much more restrictive
+        // than simply looking for ASCII.
+        return Encoding.ASCII.GetString(Encoding.ASCII.GetBytes(value.Trim()));
+    }
+
+    /// <summary>
+    ///     Require that the string is normalized.  Throw an exception otherwise.
+    /// </summary>
+    /// <param name="value"></param>
+    public static void RequireNormalizedAsciiName(string value)
+    {
+        var normalized = NormalizeAsciiName(value);
+
+        if (!string.Equals(normalized, value, StringComparison.Ordinal))
+            throw new ArgumentException("non-normalized string");
+    }
+
+    public static string ForceTrailingSlash(string path)
+    {
+        if (!path.EndsWith("/", StringComparison.OrdinalIgnoreCase) && !path.EndsWith("\\", StringComparison.OrdinalIgnoreCase))
+            return path + "\\";
+
+        return path;
+    }
+
+    public static IEnumerable<FileInfo> ScanDirectory(string path, Func<FileInfo, bool> filePredicate)
+    {
+        Debug.WriteLine($"PathUtil.ScanDirectory({path})");
+
+        var timer = Stopwatch.StartNew();
+
+        var attr = File.GetAttributes(path);
+
+        if (FileAttributes.Directory == (attr & FileAttributes.Directory))
         {
-            if (string.IsNullOrWhiteSpace(fromPath))
-                throw new ArgumentNullException(nameof(fromPath));
-            if (string.IsNullOrWhiteSpace(toPath))
-                throw new ArgumentNullException(nameof(toPath));
+            var dir = new DirectoryInfo(path);
 
-            var fromUri = new Uri(fromPath);
-            var toUri = new Uri(toPath);
-
-            if (fromUri.Scheme != toUri.Scheme)
-                return toPath;
-
-            var relativeUri = fromUri.MakeRelativeUri(toUri);
-            var relativePath = Uri.UnescapeDataString(relativeUri.ToString());
-
-            if (toUri.Scheme.ToUpperInvariant() == "FILE")
-                relativePath = relativePath.Replace(Path.AltDirectorySeparatorChar, Path.DirectorySeparatorChar);
-
-            return relativePath;
-        }
-
-        /// <summary>
-        ///     Remove non-ASCII characters.  Remove leading and trailing white-space.
-        /// </summary>
-        /// <param name="value"></param>
-        /// <returns></returns>
-        public static string NormalizeAsciiName(string value)
-        {
-            if (string.IsNullOrWhiteSpace(value))
-                return null;
-
-            // This really isn't enough.  We should be much more restrictive
-            // than simply looking for ASCII.
-            return Encoding.ASCII.GetString(Encoding.ASCII.GetBytes(value.Trim()));
-        }
-
-        /// <summary>
-        ///     Require that the string is normalized.  Throw an exception otherwise.
-        /// </summary>
-        /// <param name="value"></param>
-        public static void RequireNormalizedAsciiName(string value)
-        {
-            var normalized = NormalizeAsciiName(value);
-
-            if (!string.Equals(normalized, value, StringComparison.Ordinal))
-                throw new ArgumentException("non-normalized string");
-        }
-
-        public static string ForceTrailingSlash(string path)
-        {
-            if (!path.EndsWith("/", StringComparison.OrdinalIgnoreCase) && !path.EndsWith("\\", StringComparison.OrdinalIgnoreCase))
-                return path + "\\";
-
-            return path;
-        }
-
-        public static IEnumerable<FileInfo> ScanDirectory(string path, Func<FileInfo, bool> filePredicate)
-        {
-            Debug.WriteLine($"PathUtil.ScanDirectory({path})");
-
-            var timer = Stopwatch.StartNew();
-
-            var attr = File.GetAttributes(path);
-
-            if (FileAttributes.Directory == (attr & FileAttributes.Directory))
+            if (dir.Exists)
             {
-                var dir = new DirectoryInfo(path);
-
-                if (dir.Exists)
+                foreach (var fileInfo in dir.EnumerateFiles("*", SearchOption.AllDirectories))
                 {
-                    foreach (var fileInfo in dir.EnumerateFiles("*", SearchOption.AllDirectories))
-                    {
-                        if (filePredicate(fileInfo))
-                            yield return fileInfo;
-                        else
-                            Debug.WriteLine($"PathUtil.ScanDirectory({path}) excluding {fileInfo.FullName}");
-                    }
+                    if (filePredicate(fileInfo))
+                        yield return fileInfo;
+                    else
+                        Debug.WriteLine($"PathUtil.ScanDirectory({path}) excluding {fileInfo.FullName}");
                 }
             }
-            else if (0 == (attr & (FileAttributes.Offline | FileAttributes.ReparsePoint)))
-            {
-                var fileInfo = new FileInfo(path);
-
-                if (fileInfo.Exists && filePredicate(fileInfo))
-                    yield return fileInfo;
-                else
-                    Debug.WriteLine($"PathUtil.ScanDirectory({path}) excluding {fileInfo.FullName}");
-            }
-
-            timer.Stop();
-
-            Debug.WriteLine($"PathUtil.ScanDirectory({path}) after {timer.Elapsed}");
         }
-
-        public static string GetHost(string path)
+        else if (0 == (attr & (FileAttributes.Offline | FileAttributes.ReparsePoint)))
         {
-            var uri = new Uri(path, UriKind.RelativeOrAbsolute);
+            var fileInfo = new FileInfo(path);
 
-            return uri.IsAbsoluteUri ? uri.Host : string.Empty;
+            if (fileInfo.Exists && filePredicate(fileInfo))
+                yield return fileInfo;
+            else
+                Debug.WriteLine($"PathUtil.ScanDirectory({path}) excluding {fileInfo.FullName}");
         }
+
+        timer.Stop();
+
+        Debug.WriteLine($"PathUtil.ScanDirectory({path}) after {timer.Elapsed}");
+    }
+
+    public static string GetHost(string path)
+    {
+        var uri = new Uri(path, UriKind.RelativeOrAbsolute);
+
+        return uri.IsAbsoluteUri ? uri.Host : string.Empty;
     }
 }

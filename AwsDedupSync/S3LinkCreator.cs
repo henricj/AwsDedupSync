@@ -27,34 +27,33 @@ using AwsSyncer;
 using AwsSyncer.AWS;
 using AwsSyncer.Types;
 
-namespace AwsDedupSync
+namespace AwsDedupSync;
+
+public class S3LinkCreator
 {
-    public class S3LinkCreator
+    readonly LinkManager _linkManager;
+    readonly S3Settings _s3Settings;
+
+    public S3LinkCreator(S3Settings s3Settings)
     {
-        readonly LinkManager _linkManager;
-        readonly S3Settings _s3Settings;
+        _s3Settings = s3Settings;
+        _linkManager = new();
+    }
 
-        public S3LinkCreator(S3Settings s3Settings)
+    public async Task UpdateLinksAsync(IAwsManager awsManager,
+        ISourceBlock<Tuple<AnnotatedPath, FileFingerprint>> linkBlobs,
+        CancellationToken cancellationToken)
+    {
+        try
         {
-            _s3Settings = s3Settings;
-            _linkManager = new LinkManager();
+            await LinkManager.CreateLinksAsync(awsManager, linkBlobs, _s3Settings.ActuallyWrite, cancellationToken)
+                .ConfigureAwait(false);
+
+            Debug.WriteLine("Done processing links");
         }
-
-        public async Task UpdateLinksAsync(IAwsManager awsManager,
-            ISourceBlock<Tuple<AnnotatedPath, FileFingerprint>> linkBlobs,
-            CancellationToken cancellationToken)
+        catch (Exception ex)
         {
-            try
-            {
-                await LinkManager.CreateLinksAsync(awsManager, linkBlobs, _s3Settings.ActuallyWrite, cancellationToken)
-                    .ConfigureAwait(false);
-
-                Debug.WriteLine("Done processing links");
-            }
-            catch (Exception ex)
-            {
-                Debug.WriteLine("Processing links failed: " + ex.Message);
-            }
+            Debug.WriteLine("Processing links failed: " + ex.Message);
         }
     }
 }

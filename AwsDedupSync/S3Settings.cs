@@ -18,13 +18,12 @@
 // FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
-namespace AwsDedupSync
+namespace AwsDedupSync;
+
+public class S3Settings
 {
-    public class S3Settings
-    {
-        public bool ActuallyWrite { get; init; } = true;
-        public bool UpdateLinks { get; init; } = true;
-        public bool UploadBlobs { get; init; } = true;
-        public bool UpdateMeta { get; set; }
-    }
+    public bool ActuallyWrite { get; init; } = true;
+    public bool UpdateLinks { get; init; } = true;
+    public bool UploadBlobs { get; init; } = true;
+    public bool UpdateMeta { get; set; }
 }

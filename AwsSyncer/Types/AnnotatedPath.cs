@@ -21,59 +21,58 @@
 using System;
 using System.IO;
 
-namespace AwsSyncer.Types
+namespace AwsSyncer.Types;
+
+public sealed class AnnotatedPath : IEquatable<AnnotatedPath>
 {
-    public sealed class AnnotatedPath : IEquatable<AnnotatedPath>
+    public FileInfo FileInfo { get; }
+    public string Collection { get; }
+    public string RelativePath { get; }
+
+    public AnnotatedPath(FileInfo fileInfo, string collection, string relativePath)
     {
-        public AnnotatedPath(FileInfo fileInfo, string collection, string relativePath)
-        {
-            FileInfo = fileInfo ?? throw new ArgumentNullException(nameof(fileInfo));
-            Collection = collection ?? throw new ArgumentNullException(nameof(collection));
-            RelativePath = relativePath ?? throw new ArgumentNullException(nameof(relativePath));
-        }
-
-        public FileInfo FileInfo { get; }
-        public string Collection { get; }
-        public string RelativePath { get; }
-
-        public bool Equals(AnnotatedPath other)
-        {
-            if (other is null)
-                return false;
-            if (ReferenceEquals(this, other))
-                return true;
-
-            return FileInfo.Equals(other.FileInfo)
-                   && string.Equals(Collection, other.Collection, StringComparison.OrdinalIgnoreCase)
-                   && string.Equals(RelativePath, other.RelativePath, StringComparison.OrdinalIgnoreCase);
-        }
-
-        public override string ToString() => '[' + Collection + ']' + RelativePath;
-
-        public override bool Equals(object obj)
-        {
-            if (obj is null)
-                return false;
-            if (ReferenceEquals(this, obj))
-                return true;
-
-            return obj is AnnotatedPath path && Equals(path);
-        }
-
-        public override int GetHashCode()
-        {
-            unchecked
-            {
-                var hashCode = FileInfo.GetHashCode();
-                hashCode = (hashCode * 397) ^ StringComparer.OrdinalIgnoreCase.GetHashCode(Collection);
-                hashCode = (hashCode * 397) ^ StringComparer.OrdinalIgnoreCase.GetHashCode(RelativePath);
-
-                return hashCode;
-            }
-        }
-
-        public static bool operator ==(AnnotatedPath left, AnnotatedPath right) => Equals(left, right);
-
-        public static bool operator !=(AnnotatedPath left, AnnotatedPath right) => !Equals(left, right);
+        FileInfo = fileInfo ?? throw new ArgumentNullException(nameof(fileInfo));
+        Collection = collection ?? throw new ArgumentNullException(nameof(collection));
+        RelativePath = relativePath ?? throw new ArgumentNullException(nameof(relativePath));
     }
+
+    public bool Equals(AnnotatedPath other)
+    {
+        if (other is null)
+            return false;
+        if (ReferenceEquals(this, other))
+            return true;
+
+        return FileInfo.Equals(other.FileInfo)
+            && string.Equals(Collection, other.Collection, StringComparison.OrdinalIgnoreCase)
+            && string.Equals(RelativePath, other.RelativePath, StringComparison.OrdinalIgnoreCase);
+    }
+
+    public override string ToString() => '[' + Collection + ']' + RelativePath;
+
+    public override bool Equals(object obj)
+    {
+        if (obj is null)
+            return false;
+        if (ReferenceEquals(this, obj))
+            return true;
+
+        return obj is AnnotatedPath path && Equals(path);
+    }
+
+    public override int GetHashCode()
+    {
+        unchecked
+        {
+            var hashCode = FileInfo.GetHashCode();
+            hashCode = (hashCode * 397) ^ StringComparer.OrdinalIgnoreCase.GetHashCode(Collection);
+            hashCode = (hashCode * 397) ^ StringComparer.OrdinalIgnoreCase.GetHashCode(RelativePath);
+
+            return hashCode;
+        }
+    }
+
+    public static bool operator ==(AnnotatedPath left, AnnotatedPath right) => Equals(left, right);
+
+    public static bool operator !=(AnnotatedPath left, AnnotatedPath right) => !Equals(left, right);
 }

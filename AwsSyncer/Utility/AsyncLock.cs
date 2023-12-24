@@ -24,185 +24,179 @@ using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace AwsSyncer.Utility
+namespace AwsSyncer.Utility;
+
+public sealed class AsyncLock : IDisposable
 {
-    public sealed class AsyncLock : IDisposable
+    readonly object _lock = new();
+    bool _isLocked;
+    Queue<TaskCompletionSource<IDisposable>> _pending = new();
+
+    #region IDisposable Members
+
+    public void Dispose()
     {
-        readonly object _lock = new();
-        bool _isLocked;
-        Queue<TaskCompletionSource<IDisposable>> _pending = new();
+        TaskCompletionSource<IDisposable>[] pending;
 
-        #region IDisposable Members
-
-        public void Dispose()
+        lock (_lock)
         {
-            TaskCompletionSource<IDisposable>[] pending;
+            if (null == _pending)
+                return;
 
-            lock (_lock)
+            CheckInvariant();
+
+            _isLocked = true;
+
+            if (0 == _pending.Count)
             {
-                if (null == _pending)
-                    return;
+                _pending = null;
+                return;
+            }
 
-                CheckInvariant();
+            pending = _pending.ToArray();
+            _pending.Clear();
 
+            _pending = null;
+        }
+
+        foreach (var tcs in pending)
+            tcs.TrySetCanceled();
+    }
+
+    #endregion
+
+    [Conditional("DEBUG")]
+    void CheckInvariant() =>
+        Debug.Assert(_isLocked || (null != _pending && 0 == _pending.Count),
+            "Either we are locked or we have an empty queue");
+
+    public IDisposable TryLock()
+    {
+        ThrowIfDisposed();
+
+        lock (_lock)
+        {
+            CheckInvariant();
+
+            if (_isLocked)
+                return null;
+
+            _isLocked = true;
+
+            return new Releaser(this);
+        }
+    }
+
+    public Task<IDisposable> LockAsync(CancellationToken cancellationToken)
+    {
+        ThrowIfDisposed();
+
+        cancellationToken.ThrowIfCancellationRequested();
+
+        TaskCompletionSource<IDisposable> tcs;
+
+        lock (_lock)
+        {
+            CheckInvariant();
+
+            if (!_isLocked)
+            {
                 _isLocked = true;
 
-                if (0 == _pending.Count)
+                return Task.FromResult<IDisposable>(new Releaser(this));
+            }
+
+            tcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+            _pending.Enqueue(tcs);
+        }
+
+        if (!cancellationToken.CanBeCanceled)
+            return tcs.Task;
+
+        return CancellableTaskAsync(tcs, cancellationToken);
+    }
+
+    async Task<IDisposable> CancellableTaskAsync(TaskCompletionSource<IDisposable> tcs, CancellationToken cancellationToken)
+    {
+        var registration = cancellationToken.Register(
+            () =>
+            {
+                bool wasPending;
+
+                lock (_lock)
                 {
-                    _pending = null;
-                    return;
+                    CheckInvariant();
+
+                    wasPending = _pending.Remove(tcs);
                 }
 
-                pending = _pending.ToArray();
-                _pending.Clear();
+                if (wasPending)
+                    tcs.TrySetCanceled();
+            });
 
-                _pending = null;
-            }
-
-            foreach (var tcs in pending)
-                tcs.TrySetCanceled();
-        }
-
-        #endregion
-
-        [Conditional("DEBUG")]
-        void CheckInvariant()
+        await using (registration.ConfigureAwait(false))
         {
-            Debug.Assert(_isLocked || (null != _pending && 0 == _pending.Count),
-                "Either we are locked or we have an empty queue");
+            return await tcs.Task.ConfigureAwait(false);
         }
+    }
 
-        public IDisposable TryLock()
+    void Release()
+    {
+        for (;;)
         {
-            ThrowIfDisposed();
-
-            lock (_lock)
-            {
-                CheckInvariant();
-
-                if (_isLocked)
-                    return null;
-
-                _isLocked = true;
-
-                return new Releaser(this);
-            }
-        }
-
-        public Task<IDisposable> LockAsync(CancellationToken cancellationToken)
-        {
-            ThrowIfDisposed();
-
-            cancellationToken.ThrowIfCancellationRequested();
-
             TaskCompletionSource<IDisposable> tcs;
 
             lock (_lock)
             {
                 CheckInvariant();
 
-                if (!_isLocked)
+                Debug.Assert(_isLocked, "AsyncLock.Release() was unlocked");
+
+                if (null == _pending)
+                    return; // We have been disposed (so stay locked)
+
+                if (0 == _pending.Count)
                 {
-                    _isLocked = true;
-
-                    return Task.FromResult<IDisposable>(new Releaser(this));
-                }
-
-                tcs = new TaskCompletionSource<IDisposable>(TaskCreationOptions.RunContinuationsAsynchronously);
-
-                _pending.Enqueue(tcs);
-            }
-
-            if (!cancellationToken.CanBeCanceled)
-                return tcs.Task;
-
-            return CancellableTaskAsync(tcs, cancellationToken);
-        }
-
-        async Task<IDisposable> CancellableTaskAsync(TaskCompletionSource<IDisposable> tcs, CancellationToken cancellationToken)
-        {
-            var registration = cancellationToken.Register(
-                () =>
-                {
-                    bool wasPending;
-
-                    lock (_lock)
-                    {
-                        CheckInvariant();
-
-                        wasPending = _pending.Remove(tcs);
-                    }
-
-                    if (wasPending)
-                        tcs.TrySetCanceled();
-                });
-
-            await using (registration.ConfigureAwait(false))
-            {
-                return await tcs.Task.ConfigureAwait(false);
-            }
-        }
-
-        void Release()
-        {
-            for (;;)
-            {
-                TaskCompletionSource<IDisposable> tcs;
-
-                lock (_lock)
-                {
-                    CheckInvariant();
-
-                    Debug.Assert(_isLocked, "AsyncLock.Release() was unlocked");
-
-                    if (null == _pending)
-                        return; // We have been disposed (so stay locked)
-
-                    if (0 == _pending.Count)
-                    {
-                        _isLocked = false;
-                        return;
-                    }
-
-                    tcs = _pending.Dequeue();
-                }
-
-                if (tcs.TrySetResult(new Releaser(this)))
+                    _isLocked = false;
                     return;
-            }
-        }
+                }
 
-        void ThrowIfDisposed()
-        {
-            if (null != _pending)
+                tcs = _pending.Dequeue();
+            }
+
+            if (tcs.TrySetResult(new Releaser(this)))
                 return;
-
-            throw new ObjectDisposedException(GetType().Name);
         }
+    }
 
-        #region Nested type: Releaser
+    void ThrowIfDisposed()
+    {
+        if (null != _pending)
+            return;
 
-        sealed class Releaser : IDisposable
+        throw new ObjectDisposedException(GetType().Name);
+    }
+
+    #region Nested type: Releaser
+
+    sealed class Releaser : IDisposable
+    {
+        AsyncLock _asyncLock;
+
+        public Releaser(AsyncLock asynclock) => _asyncLock = asynclock;
+
+        #region IDisposable Members
+
+        public void Dispose()
         {
-            AsyncLock _asyncLock;
+            var asyncLock = Interlocked.Exchange(ref _asyncLock, null);
 
-            public Releaser(AsyncLock asynclock)
-            {
-                _asyncLock = asynclock;
-            }
-
-            #region IDisposable Members
-
-            public void Dispose()
-            {
-                var asyncLock = Interlocked.Exchange(ref _asyncLock, null);
-
-                asyncLock?.Release();
-            }
-
-            #endregion
+            asyncLock?.Release();
         }
 
         #endregion
     }
+
+    #endregion
 }

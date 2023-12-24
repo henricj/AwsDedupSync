@@ -23,52 +23,48 @@ using System.Collections.Generic;
 using System.Security.Cryptography;
 using System.Threading;
 
-namespace AwsSyncer.Utility
+namespace AwsSyncer.Utility;
+
+public static class RandomUtil
 {
-    public static class RandomUtil
+    static readonly ThreadLocal<Random> LocalRandom = new(CreateRandom);
+
+    public static Random ThreadLocalRandom => LocalRandom.Value;
+
+    public static Random CreateRandom()
     {
-        static readonly ThreadLocal<Random> LocalRandom = new(CreateRandom);
+        var buffer = new byte[4];
 
-        public static Random ThreadLocalRandom => LocalRandom.Value;
-
-        public static Random CreateRandom()
+        using (var rng = RandomNumberGenerator.Create())
         {
-            var buffer = new byte[4];
-
-            using (var rng = RandomNumberGenerator.Create())
-            {
-                rng.GetBytes(buffer);
-            }
-
-            return new Random(BitConverter.ToInt32(buffer, 0));
+            rng.GetBytes(buffer);
         }
 
-        /// <summary>
-        ///     Fisher-Yates shuffle
-        /// </summary>
-        /// <typeparam name="T"></typeparam>
-        /// <param name="random"></param>
-        /// <param name="list"></param>
-        public static void Shuffle<T>(this Random random, IList<T> list)
-        {
-            for (var i = list.Count - 1; i >= 1; --i)
-            {
-                var j = random.Next(i + 1);
+        return new(BitConverter.ToInt32(buffer, 0));
+    }
 
-                var tmp = list[i];
-                list[i] = list[j];
-                list[j] = tmp;
-            }
-        }
-
-        /// <summary>
-        ///     Fisher-Yates shuffle
-        /// </summary>
-        /// <typeparam name="T"></typeparam>
-        /// <param name="list"></param>
-        public static void Shuffle<T>(IList<T> list)
+    /// <summary>
+    ///     Fisher-Yates shuffle
+    /// </summary>
+    /// <typeparam name="T"></typeparam>
+    /// <param name="random"></param>
+    /// <param name="list"></param>
+    public static void Shuffle<T>(this Random random, IList<T> list)
+    {
+        for (var i = list.Count - 1; i >= 1; --i)
         {
-            LocalRandom.Value.Shuffle(list);
+            var j = random.Next(i + 1);
+
+            var tmp = list[i];
+            list[i] = list[j];
+            list[j] = tmp;
         }
     }
+
+    /// <summary>
+    ///     Fisher-Yates shuffle
+    /// </summary>
+    /// <typeparam name="T"></typeparam>
+    /// <param name="list"></param>
+    public static void Shuffle<T>(IList<T> list) => LocalRandom.Value.Shuffle(list);
 }
