@@ -51,8 +51,7 @@ public class TaskCollector
         task.ContinueWith(Cleanup);
     }
 
-    [Conditional("DEBUG")]
-    public void Wait()
+    public async Task WaitAsync()
     {
         KeyValuePair<Task, string>[] tasks = null;
 
@@ -67,16 +66,16 @@ public class TaskCollector
 
         try
         {
-            Task.WhenAll(tasks.Select(t => t.Key)).Wait();
+            await Task.WhenAll(tasks.Select(t => t.Key)).ConfigureAwait(false);
         }
         catch (AggregateException ex)
         {
             foreach (var e in ex.InnerExceptions)
-                Debug.WriteLine("TaskCollector.Wait() Task wait failed: " + e.Message);
+                Debug.WriteLine("TaskCollector.WaitAsync() Task wait failed: " + e.Message);
         }
         catch (Exception ex)
         {
-            Debug.WriteLine("TaskCollector.Wait() Task wait failed: " + ex.Message);
+            Debug.WriteLine("TaskCollector.WaitAsync() Task wait failed: " + ex.Message);
         }
     }
 

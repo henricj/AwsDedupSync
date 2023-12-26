@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2014-2017 Henric Jungheim <software@henric.org>
+﻿// Copyright (c) 2014-2017, 2023 Henric Jungheim <software@henric.org>
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a
 // copy of this software and associated documentation files (the "Software"),
@@ -19,24 +19,89 @@
 // DEALINGS IN THE SOFTWARE.
 
 using System;
+using System.Collections.Frozen;
 using System.Diagnostics;
 using System.IO;
-using System.Linq;
 using System.Net;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using AwsDedupSync;
 using AwsSyncer.Utility;
 using Microsoft.Extensions.Configuration;
 
-namespace AwsDedupSync;
+if (ServicePointManager.DefaultConnectionLimit < 30)
+    ServicePointManager.DefaultConnectionLimit = 30;
 
-static class Program
+Console.Out.Close();
+
+await using var writer = new StreamWriter(Console.OpenStandardOutput(), new UTF8Encoding(false), 4 * 4096);
+
+using var cts = new CancellationTokenSource();
+
+var cancellationToken = cts.Token;
+
+var flushTask = Task.Run(async () =>
 {
-    static readonly Encoding Utf8NoBom = new UTF8Encoding(false);
-    static readonly string[] ExcludeFiles = ["desktop.ini", "Thumbs.db"];
+    try
+    {
+        while (!cancellationToken.IsCancellationRequested)
+        {
+            await Task.Delay(1000, cancellationToken).ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
 
-    static Func<CancellationToken, Task> CreateSyncRunner(string[] paths)
+            if (cancellationToken.IsCancellationRequested)
+                break;
+
+            await Console.Out.FlushAsync(cancellationToken).ConfigureAwait(false);
+        }
+    }
+    catch (OperationCanceledException ex) when (ex.CancellationToken == cancellationToken)
+    { }
+    catch (Exception ex)
+    {
+        Console.Error.WriteLine($"Flush failed with {ex.Message}");
+    }
+});
+
+Console.SetOut(writer);
+
+var syncRunner = Sync.CreateSyncRunner(args);
+
+var sw = new Stopwatch();
+
+try
+{
+    sw.Start();
+
+    await ConsoleCancel.RunAsync(syncRunner, TimeSpan.Zero);
+
+    sw.Stop();
+}
+catch (Exception ex)
+{
+    sw.Stop();
+
+    Console.WriteLine(ex.Message);
+}
+
+await cts.CancelAsync().ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+
+await flushTask.ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+
+var process = Process.GetCurrentProcess();
+
+Console.WriteLine("Elapsed {0} CPU {1} User {2} Priv {3}",
+    sw.Elapsed, process.TotalProcessorTime, process.UserProcessorTime, process.PrivilegedProcessorTime);
+Console.WriteLine("Peak Memory: Virtual {0:F1} GiB Paged {1:F1} MiB Working {2:F1} MiB",
+    process.PeakVirtualMemorySize64.BytesToGiB(), process.PeakPagedMemorySize64.BytesToMiB(),
+    process.PeakWorkingSet64.BytesToMiB());
+
+static class Sync
+{
+    static readonly FrozenSet<string> ExcludeFiles =
+        new[] { "desktop.ini", "Thumbs.db" }.ToFrozenSet(StringComparer.OrdinalIgnoreCase);
+
+    public static Func<CancellationToken, Task> CreateSyncRunner(string[] paths)
     {
         var builder = new ConfigurationBuilder()
             .SetBasePath(Directory.GetCurrentDirectory())
@@ -47,48 +112,6 @@ static class Program
         var syncer = new S3PathSyncer();
 
         return ct => syncer.SyncPathsAsync(config, paths,
-            fi => !ExcludeFiles.Contains(fi.Name, StringComparer.OrdinalIgnoreCase), ct);
-    }
-
-    static void Main(string[] args)
-    {
-        if (ServicePointManager.DefaultConnectionLimit < 30)
-            ServicePointManager.DefaultConnectionLimit = 30;
-
-        Console.Out.Close();
-
-        using var writer = new StreamWriter(Console.OpenStandardOutput(), Utf8NoBom, 4 * 4096);
-        using var _ = new Timer(_ => TaskCollector.Default.Add(Console.Out.FlushAsync(), "Console Flush"), null, 1000, 1000);
-
-        Console.SetOut(writer);
-
-        var syncRunner = CreateSyncRunner(args);
-
-        var sw = new Stopwatch();
-
-        try
-        {
-            sw.Start();
-
-            ConsoleCancel.RunAsync(syncRunner, TimeSpan.Zero).GetAwaiter().GetResult();
-
-            sw.Stop();
-        }
-        catch (Exception ex)
-        {
-            sw.Stop();
-
-            Console.WriteLine(ex.Message);
-        }
-
-        TaskCollector.Default.Wait();
-
-        var process = Process.GetCurrentProcess();
-
-        Console.WriteLine("Elapsed {0} CPU {1} User {2} Priv {3}",
-            sw.Elapsed, process.TotalProcessorTime, process.UserProcessorTime, process.PrivilegedProcessorTime);
-        Console.WriteLine("Peak Memory: Virtual {0:F1}GiB Paged {1:F1}MiB Working {2:F1}MiB",
-            process.PeakVirtualMemorySize64.BytesToGiB(), process.PeakPagedMemorySize64.BytesToMiB(),
-            process.PeakWorkingSet64.BytesToMiB());
+            fi => !ExcludeFiles.Contains(fi.Name), ct);
     }
 }
