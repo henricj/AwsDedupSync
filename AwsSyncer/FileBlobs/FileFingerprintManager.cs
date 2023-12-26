@@ -166,7 +166,7 @@ public sealed class FileFingerprintManager(IFileFingerprintStore fileFingerprint
             var sw = Stopwatch.StartNew();
 
             var s = new FileStream(fileInfo.FullName, FileMode.Open, FileAccess.Read, FileShare.Read,
-                8192, FileOptions.Asynchronous | FileOptions.SequentialScan);
+                0, FileOptions.Asynchronous | FileOptions.SequentialScan);
 
             await using (s.ConfigureAwait(false))
             {
