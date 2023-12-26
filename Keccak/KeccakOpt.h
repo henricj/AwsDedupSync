@@ -6,20 +6,25 @@ using namespace System;
 
 extern "C" {
 #include "KeccakHash.h"
-#include "KeccakF-1600-interface.h"
 }
 
 namespace KeccakOpt
 {
-public ref class Keccak : Security::Cryptography::HashAlgorithm
+public ref class Keccak sealed
 {
     // TODO: Add your methods for this class here.
     AlignedAutoPtr<Keccak_HashInstance> hash_;
     static Keccak();
+
 public:
+    const static int HashSizeInBytes = 64;
+
+    Keccak();
+    ~Keccak();
+
     static void Validate();
-    void Initialize() override;
-    void HashCore(array<unsigned char>^ buffer, int offset, int length) override;
-    array<unsigned char>^ HashFinal() override;
+    void AppendData(ReadOnlySpan<unsigned char> data);
+    void Initialize();
+    void GetHashAndReset(Span<unsigned char> hash);
 };
 }
