@@ -186,7 +186,8 @@ public sealed class S3Blobs(IAmazonS3 amazon, IPathManager pathManager, S3Storag
             StorageClass = _s3StorageClass,
             AutoCloseStream = false,
             AutoResetStreamPosition = false,
-            ChecksumSHA256 = base64Sha256
+            ChecksumSHA256 = base64Sha256,
+            ChecksumAlgorithm = ChecksumAlgorithm.SHA256
         };
 
         if (!string.IsNullOrEmpty(tuple.Item2.Collection))
