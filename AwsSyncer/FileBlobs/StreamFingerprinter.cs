@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2014, 2017 Henric Jungheim <software@henric.org>
+﻿// Copyright (c) 2014, 2017, 2023 Henric Jungheim <software@henric.org>
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a
 // copy of this software and associated documentation files (the "Software"),
@@ -18,91 +18,145 @@
 // FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
-using System.Collections.Concurrent;
-using System.Diagnostics.CodeAnalysis;
+using System;
 using System.IO;
+using System.IO.Pipelines;
 using System.Security.Cryptography;
 using System.Threading;
 using System.Threading.Tasks;
 using AwsSyncer.Types;
 using KeccakOpt;
+using Microsoft.Extensions.ObjectPool;
 
 namespace AwsSyncer.FileBlobs;
 
 public interface IStreamFingerprinter
 {
-    Task<BlobFingerprint> GetFingerprintAsync(Stream stream, CancellationToken cancellationToken);
+    ValueTask<BlobFingerprint> GetFingerprintAsync(Stream stream, CancellationToken cancellationToken);
 }
 
-public class StreamFingerprinter : IStreamFingerprinter
+public class StreamFingerprinter(ObjectPoolProvider pipePool) : IStreamFingerprinter
 {
-    const int BufferSize = 256 * 1024;
-    readonly ConcurrentStack<byte[]> _buffers = new();
+    static readonly DefaultPooledObjectPolicy<State> PipePooledObjectPolicy = new();
 
-    [SuppressMessage("Security", "CA5351:Do Not Use Broken Cryptographic Algorithms",
-        Justification = "MD5 is required for external API compatibility.")]
-    public async Task<BlobFingerprint> GetFingerprintAsync(Stream stream, CancellationToken cancellationToken)
+    readonly ObjectPool<State> _statePool = pipePool.Create(PipePooledObjectPolicy);
+
+    public async ValueTask<BlobFingerprint> GetFingerprintAsync(Stream stream, CancellationToken cancellationToken)
     {
-        using var sha3 = new Keccak();
-        using var sha256 = SHA256.Create();
-        using var md5 = MD5.Create();
-        var buffers = new[] { AllocateBuffer(), AllocateBuffer() };
-        var index = 0;
-
-        var totalLength = 0L;
-
-        var readTask = stream.ReadAsync(buffers[index], 0, buffers[index].Length, cancellationToken);
-
-        for (;;)
+        var state = _statePool.Get();
+        try
         {
-            var length = await readTask.ConfigureAwait(false);
+            return await state.CreateFingerprintAsync(stream, cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            state.Reset();
+            _statePool.Return(state);
+        }
+    }
 
-            if (length < 1)
-                break;
+    sealed class State : IDisposable
+    {
+        readonly IncrementalHash _md5 = IncrementalHash.CreateHash(HashAlgorithmName.MD5);
+        readonly Pipe _pipe = new();
+        readonly IncrementalHash _sha256 = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+        readonly Keccak _sha3 = new();
 
-            var buffer = buffers[index];
-
-            if (++index >= buffers.Length)
-                index = 0;
-
-            readTask = stream.ReadAsync(buffers[index], 0, buffers[index].Length, cancellationToken);
-
-            totalLength += length;
-
-            sha3.TransformBlock(buffer, 0, length, buffer, 0);
-
-            sha256.TransformBlock(buffer, 0, length, buffer, 0);
-
-            md5.TransformBlock(buffer, 0, length, buffer, 0);
+        public void Dispose()
+        {
+            _sha3.Dispose();
+            _sha256.Dispose();
+            _md5.Dispose();
         }
 
-        sha3.TransformFinalBlock(buffers[0], 0, 0);
+        public async ValueTask<BlobFingerprint> CreateFingerprintAsync(Stream stream, CancellationToken cancellationToken)
+        {
+            var totalLength = 0L;
 
-        sha256.TransformFinalBlock(buffers[0], 0, 0);
+            var reader = _pipe.Reader;
+            var writer = _pipe.Writer;
 
-        md5.TransformFinalBlock(buffers[0], 0, 0);
+            var readTask = Task.Run(async () =>
+            {
+                try
+                {
+                    await stream.CopyToAsync(writer, cancellationToken).ConfigureAwait(false);
+                    await writer.CompleteAsync().ConfigureAwait(false);
+                }
+                catch (Exception ex)
+                {
+                    await writer.CompleteAsync(ex).ConfigureAwait(false);
+                }
+            }, cancellationToken);
 
-        foreach (var buffer in buffers)
-            FreeBuffer(buffer);
+            try
+            {
+                for (;;)
+                {
+                    if (!reader.TryRead(out var result))
+                    {
+                        result = await reader.ReadAsync(cancellationToken).ConfigureAwait(false);
+                    }
 
-        var fingerprint = new BlobFingerprint(totalLength, sha3.Hash, sha256.Hash, md5.Hash);
+                    if (result.IsCanceled)
+                        break;
 
-        return fingerprint;
-    }
+                    if (result.Buffer.IsEmpty)
+                    {
+                        if (result.IsCompleted)
+                            break;
 
-    byte[] AllocateBuffer()
-    {
-        if (!_buffers.TryPop(out var buffer))
-            buffer = new byte[BufferSize];
+                        continue;
+                    }
 
-        return buffer;
-    }
+                    var buffer = result.Buffer;
+                    totalLength += buffer.Length;
 
-    void FreeBuffer(byte[] buffer)
-    {
-        if (BufferSize != buffer.Length)
-            return;
+                    if (buffer.IsSingleSegment)
+                    {
+                        _sha3.AppendData(buffer.FirstSpan);
+                        _sha256.AppendData(buffer.FirstSpan);
+                        _md5.AppendData(buffer.FirstSpan);
+                    }
+                    else
+                    {
+                        foreach (var memory in buffer)
+                        {
+                            _sha3.AppendData(memory.Span);
+                            _sha256.AppendData(memory.Span);
+                            _md5.AppendData(memory.Span);
+                        }
+                    }
 
-        _buffers.Push(buffer);
+                    reader.AdvanceTo(buffer.End);
+                }
+            }
+            finally
+            {
+                await reader.CompleteAsync().ConfigureAwait(false);
+                await readTask.ConfigureAwait(false);
+            }
+
+            var sha3Hash = new byte[Keccak.HashSizeInBytes];
+            _sha3.GetHashAndReset(sha3Hash);
+
+            var sha256Hash = new byte[_sha256.HashLengthInBytes];
+            _sha256.GetHashAndReset(sha256Hash);
+
+            var md5Hash = new byte[_md5.HashLengthInBytes];
+            _md5.GetHashAndReset(md5Hash);
+
+            var fingerprint = new BlobFingerprint(totalLength, sha3Hash, sha256Hash, md5Hash);
+
+            return fingerprint;
+        }
+
+        public void Reset()
+        {
+            _pipe.Reset();
+            _sha3.Initialize();
+            _sha256.TryGetHashAndReset([], out _);
+            _md5.TryGetHashAndReset([], out _);
+        }
     }
 }

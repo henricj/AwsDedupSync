@@ -1,4 +1,4 @@
-// Copyright (c) 2014-2017 Henric Jungheim <software@henric.org>
+// Copyright (c) 2014-2017, 2023 Henric Jungheim <software@henric.org>
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a
 // copy of this software and associated documentation files (the "Software"),
@@ -31,6 +31,7 @@ using AwsSyncer.FingerprintStore;
 using AwsSyncer.Types;
 using AwsSyncer.Utility;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.ObjectPool;
 
 namespace AwsDedupSync;
 
@@ -75,8 +76,11 @@ public class S3PathSyncer
             .Distinct()
             .ToArray();
 
+        var objectPoolProvider = new DefaultObjectPoolProvider();
+
         using var blobManager =
-            new BlobManager(new FileFingerprintManager(new MessagePackFileFingerprintStore(bucket), new StreamFingerprinter()));
+            new BlobManager(new FileFingerprintManager(new MessagePackFileFingerprintStore(bucket),
+                new StreamFingerprinter(objectPoolProvider)));
         try
         {
             using var awsManager = AwsManagerFactory.Create(bucket, config);
