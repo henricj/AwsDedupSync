@@ -38,12 +38,10 @@ public interface IBlobManager : IDisposable
     Task ShutdownAsync(CancellationToken cancellationToken);
 }
 
-public sealed class BlobManager : IBlobManager
+public sealed class BlobManager(IFileFingerprintManager fileFingerprintManager) : IBlobManager
 {
-    readonly IFileFingerprintManager _fileFingerprintManager;
-
-    public BlobManager(IFileFingerprintManager fileFingerprintManager) => _fileFingerprintManager =
-        fileFingerprintManager ?? throw new ArgumentNullException(nameof(fileFingerprintManager));
+    readonly IFileFingerprintManager _fileFingerprintManager = fileFingerprintManager
+        ?? throw new ArgumentNullException(nameof(fileFingerprintManager));
 
     #region IDisposable Members
 
