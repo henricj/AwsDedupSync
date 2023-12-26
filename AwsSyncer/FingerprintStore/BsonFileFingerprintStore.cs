@@ -113,17 +113,17 @@ public sealed class BsonFileFingerprintStore : IFileFingerprintStore
         }
     }
 
-    static Stream OpenBsonFileForRead(FileInfo fi) =>
-        new FileStream(fi.FullName, FileMode.Open,
+    static FileStream OpenBsonFileForRead(FileInfo fi) =>
+        new(fi.FullName, FileMode.Open,
             FileAccess.Read, FileShare.Read,
             8192, FileOptions.SequentialScan | FileOptions.Asynchronous);
 
-    Stream OpenBsonFileForWrite(FileInfo fi)
+    FileStream OpenBsonFileForWrite(FileInfo fi)
     {
         if (!_bsonDirectory.Exists)
             _bsonDirectory.Create();
 
-        return new FileStream(fi.FullName, FileMode.CreateNew,
+        return new(fi.FullName, FileMode.CreateNew,
             FileAccess.Write, FileShare.None,
             8192, FileOptions.SequentialScan | FileOptions.Asynchronous);
     }
@@ -206,11 +206,10 @@ public sealed class BsonFileFingerprintStore : IFileFingerprintStore
                 await using (decodeStream.ConfigureAwait(false))
                 await using (fileStream.ConfigureAwait(false))
                 {
-                    using var br = new BsonDataReader(bs)
-                    {
-                        DateTimeKindHandling = DateTimeKind.Utc,
-                        SupportMultipleContent = true
-                    };
+                    using var br = new BsonDataReader(bs);
+                    br.DateTimeKindHandling = DateTimeKind.Utc;
+                    br.SupportMultipleContent = true;
+
                     while (await br.ReadAsync(cancellationToken).ConfigureAwait(false))
                     {
                         cancellationToken.ThrowIfCancellationRequested();
