@@ -1,10 +1,15 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
+using System.IO.Hashing;
+using System.Linq;
 
 namespace AwsSyncer.Utility;
 
 public sealed class ByteArrayComparer : IEqualityComparer<byte[]>
 {
+    // Note: We can't actually get long.MaxValue since it is an exclusive upper bound, but
+    // this isn't for a crypto hash so let's not worry about it.
+    static readonly long Seed = Random.Shared.NextInt64(long.MinValue, long.MaxValue);
     public static readonly ByteArrayComparer Instance = new();
 
     public bool Equals(byte[] x, byte[] y)
@@ -16,23 +21,13 @@ public sealed class ByteArrayComparer : IEqualityComparer<byte[]>
         if (x.Length != y.Length)
             return false;
 
-        for (var i = 0; i < x.Length; ++i)
-        {
-            if (x[i] != y[i])
-                return false;
-        }
-
-        return true;
+        return x.SequenceEqual(y);
     }
 
     public int GetHashCode(byte[] obj)
     {
         ArgumentNullException.ThrowIfNull(obj);
 
-        var hash = 1422328907;
-        foreach (var e in obj)
-            hash = hash * 31 + e;
-
-        return hash;
+        return unchecked((int)XxHash3.HashToUInt64(obj, Seed));
     }
 }
