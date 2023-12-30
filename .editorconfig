@@ -3,12 +3,17 @@
 indent_style = space
 indent_size = 4
 tab_width = 4
+trim_trailing_whitespace = true
+charset = utf-8
 
-[*.{csproj,jsproj,lsproj,proj,props,targets,vbproj,vcxproj}]
+[*.{csproj,jsproj,lsproj,proj,props,targets,vbproj,vcxproj,yml}]
 indent_style = space
 indent_size = 2
 tab_width = 4
+trim_trailing_whitespace = true
+charset = utf-8
 
+[*.{cmd,command,ds,fs,fsi,fsx,go,gradle,groovy,js,kt,kts,ls,php,ps1,psd1,psm1,py,rb,sh,ts,tsx,vbs,vsixmanifest,xml,xsd,xsl,yaml,yml}]
 [*]
 
 # Microsoft .NET properties
