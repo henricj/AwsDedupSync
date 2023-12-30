@@ -10,31 +10,19 @@ jobs:
     runs-on: windows-latest
 
     steps:
-    - uses: actions/checkout@v3
+    - name: Checkout
+      uses: actions/checkout@v4
 
-    - name: Export Environment
-      id: export
-      run: |
-        function Export-WorkflowValue ([string]$name, [string]$value) {
-          Write-Output "$name=$value" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-        }
-        $vs = Get-VSSetupInstance | Select-VSSetupInstance -Latest -Require @('Microsoft.VisualStudio.Component.VC.Tools.x86.x64')
-        $vsdevcmd_path = (Resolve-Path -LiteralPath (Join-Path $vs.InstallationPath -ChildPath 'Common7/Tools/VsDevCmd.bat')).Path
-        Export-WorkflowValue 'VSDEVCMD_PATH' $vsdevcmd_path
+    - name: Find MSVC
+      uses: ilammy/msvc-dev-cmd@v1
 
     - name: Setup .NET
       uses: actions/setup-dotnet@v3
       with:
-        dotnet-version: '7.0.x'
+        dotnet-version: '8.0.x'
 
     - name: Restore dependencies
-      shell: cmd
-      run: |
-        call "%VSDEVCMD_PATH%" -host_arch=x64 -arch=x64 -startdir=none
-        dotnet restore
+      run: dotnet restore
 
     - name: Build
-      shell: cmd
-      run: |
-        call "%VSDEVCMD_PATH%" -host_arch=x64 -arch=x64 -startdir=none
-        msbuild /p:Configuration=Release /p:Platform=x64 AwsDedupSync.sln
+      run: msbuild /p:Configuration=Release /p:Platform=x64 AwsDedupSync.sln
