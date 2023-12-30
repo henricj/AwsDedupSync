@@ -19,10 +19,12 @@
 // DEALINGS IN THE SOFTWARE.
 
 using System;
+using System.Collections.Frozen;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.IO.Compression;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using AwsSyncer.Types;
@@ -50,11 +52,11 @@ public sealed partial class MessagePackFileFingerprintStore : IFileFingerprintSt
     public int UpdateCount { get; private set; }
     public long UpdateSize { get; private set; }
 
-    public void Dispose()
+    public async ValueTask DisposeAsync()
     {
         try
         {
-            CloseWriterAsync().GetAwaiter().GetResult();
+            await CloseWriterAsync().ConfigureAwait(false);
         }
         catch (Exception ex)
         {
@@ -71,7 +73,7 @@ public sealed partial class MessagePackFileFingerprintStore : IFileFingerprintSt
             var ret = await LoadBlobCacheRetryAsync(cancellationToken).ConfigureAwait(false);
 
             if (null != ret)
-                return ret;
+                return ret.ToFrozenDictionary(StringComparer.Ordinal);
         }
         catch (FileFormatException)
         {
@@ -100,7 +102,7 @@ public sealed partial class MessagePackFileFingerprintStore : IFileFingerprintSt
         }
     }
 
-    public async Task StoreBlobsAsync(ICollection<FileFingerprint> fileFingerprints, CancellationToken cancellationToken)
+    public async Task StoreBlobsAsync(IReadOnlyCollection<FileFingerprint> fileFingerprints, CancellationToken cancellationToken)
     {
         using (await _lock.LockAsync(cancellationToken).ConfigureAwait(false))
         {
@@ -108,12 +110,12 @@ public sealed partial class MessagePackFileFingerprintStore : IFileFingerprintSt
         }
     }
 
-    static Stream OpenMsgPackFileForRead(FileInfo fi) =>
-        new FileStream(fi.FullName, FileMode.Open,
+    static FileStream OpenMsgPackFileForRead(FileInfo fi) =>
+        new(fi.FullName, FileMode.Open,
             FileAccess.Read, FileShare.Read,
             8192, FileOptions.SequentialScan | FileOptions.Asynchronous);
 
-    static Stream OpenMsgPackFileForWrite(FileInfo fi)
+    static FileStream OpenMsgPackFileForWrite(FileInfo fi)
     {
         if (fi.Directory is null)
             throw new InvalidOperationException($"No directory for {fi.FullName}");
@@ -123,7 +125,7 @@ public sealed partial class MessagePackFileFingerprintStore : IFileFingerprintSt
         if (!fi.Directory.Exists)
             fi.Directory.Create();
 
-        return new FileStream(fi.FullName, FileMode.CreateNew,
+        return new(fi.FullName, FileMode.CreateNew,
             FileAccess.Write, FileShare.None,
             8192, FileOptions.SequentialScan | FileOptions.Asynchronous);
     }
@@ -175,7 +177,7 @@ public sealed partial class MessagePackFileFingerprintStore : IFileFingerprintSt
 
     async Task<IReadOnlyDictionary<string, FileFingerprint>> LoadBlobsImplAsync(CancellationToken cancellationToken)
     {
-        var blobs = new Dictionary<string, FileFingerprint>();
+        var blobs = new Dictionary<string, FileFingerprint>(StringComparer.Ordinal);
 
         var needRebuild = false;
 
@@ -274,6 +276,10 @@ public sealed partial class MessagePackFileFingerprintStore : IFileFingerprintSt
         {
             Console.WriteLine("Rebuilding cache files");
 
+            var invalidBlobs = blobs.Where(kv => kv.Value.Invalid).Select(kv => kv.Key).ToArray();
+            foreach (var key in invalidBlobs)
+                blobs.Remove(key);
+
             await RebuildCacheAsync(blobs, cancellationToken).ConfigureAwait(false);
         }
 
@@ -295,14 +301,14 @@ public sealed partial class MessagePackFileFingerprintStore : IFileFingerprintSt
                 {
                     var tempFileName = Path.GetRandomFileName();
 
-                    tempFileName = Path.Combine(_msgPackDirectory.FullName, tempFileName);
+                    tempFileName = Path.GetFullPath(tempFileName, _msgPackDirectory.FullName);
 
                     tempFileInfo = new(tempFileName);
                 } while (tempFileInfo.Exists);
 
                 OpenWriter(tempFileInfo);
 
-                await StoreBlobsImplAsync(blobs.Values, cancellationToken).ConfigureAwait(false);
+                await StoreBlobsImplAsync(blobs.Select(kv => kv.Value), cancellationToken).ConfigureAwait(false);
 
                 await CloseWriterAsync().ConfigureAwait(false);
             }
@@ -316,14 +322,16 @@ public sealed partial class MessagePackFileFingerprintStore : IFileFingerprintSt
             Console.WriteLine("Unable to truncate corrupt file: " + ex.Message);
         }
 
-        if (allOk)
+        if (allOk && tempFileInfo is not null)
         {
             foreach (var file in _fileSequence.Files)
                 file.Delete();
 
             _fileSequence.Rescan();
 
-            tempFileInfo?.MoveTo(_fileSequence.NewFile().FullName);
+            tempFileInfo.Refresh();
+
+            tempFileInfo.MoveTo(_fileSequence.NewFile().FullName, true);
 
             _fileSequence.Rescan();
         }
@@ -331,10 +339,12 @@ public sealed partial class MessagePackFileFingerprintStore : IFileFingerprintSt
             tempFileInfo?.Delete();
     }
 
-    async Task StoreBlobsImplAsync(ICollection<FileFingerprint> fileFingerprints, CancellationToken cancellationToken)
+    async Task StoreBlobsImplAsync(IEnumerable<FileFingerprint> fileFingerprints, CancellationToken cancellationToken)
     {
-        if (null == _writer)
+        if (_writer is null)
             OpenWriter(_fileSequence.NewFile());
+
+        Debug.Assert(_writer is not null);
 
         var count = 0;
 
@@ -345,7 +355,7 @@ public sealed partial class MessagePackFileFingerprintStore : IFileFingerprintSt
 
             _writer.Write(fileFingerprint);
 
-            if (++count > 200)
+            if (++count > 500)
             {
                 count = 0;
                 await _writer.FlushAsync(cancellationToken).ConfigureAwait(false);
@@ -364,7 +374,7 @@ public sealed partial class MessagePackFileFingerprintStore : IFileFingerprintSt
     {
         Debug.WriteLine("MsgPackFileFingerprintStore.OpenWriter()");
 
-        if (null != _writer)
+        if (_writer is not null)
             return;
 
         var writer = new FileFingerprintWriter();
@@ -378,7 +388,7 @@ public sealed partial class MessagePackFileFingerprintStore : IFileFingerprintSt
     {
         Debug.WriteLine("MessagePackFileFingerprintStore.CloseWriter()");
 
-        if (null == _writer)
+        if (_writer is null)
             return;
 
         var writer = _writer;

@@ -35,7 +35,7 @@ public interface IStreamFingerprinter
     ValueTask<BlobFingerprint> GetFingerprintAsync(Stream stream, CancellationToken cancellationToken);
 }
 
-public class StreamFingerprinter(ObjectPoolProvider pipePool) : IStreamFingerprinter
+public sealed class StreamFingerprinter(ObjectPoolProvider pipePool) : IStreamFingerprinter
 {
     static readonly DefaultPooledObjectPolicy<State> PipePooledObjectPolicy = new();
 
@@ -50,15 +50,21 @@ public class StreamFingerprinter(ObjectPoolProvider pipePool) : IStreamFingerpri
         }
         finally
         {
-            state.Reset();
             _statePool.Return(state);
         }
     }
 
-    sealed class State : IDisposable
+    sealed class State : IDisposable, IResettable
     {
+        static readonly PipeOptions PipeOptions = new(
+            useSynchronizationContext: false,
+            minimumSegmentSize: 128 * 1024,
+            pauseWriterThreshold: 384 * 1024,
+            resumeWriterThreshold: 256 * 1024
+        );
+
         readonly IncrementalHash _md5 = IncrementalHash.CreateHash(HashAlgorithmName.MD5);
-        readonly Pipe _pipe = new();
+        readonly Pipe _pipe = new(PipeOptions);
         readonly IncrementalHash _sha256 = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
         readonly Keccak _sha3 = new();
 
@@ -67,6 +73,16 @@ public class StreamFingerprinter(ObjectPoolProvider pipePool) : IStreamFingerpri
             _sha3.Dispose();
             _sha256.Dispose();
             _md5.Dispose();
+        }
+
+        public bool TryReset()
+        {
+            _pipe.Reset();
+            _sha3.Initialize();
+            _sha256.TryGetHashAndReset([], out _);
+            _md5.TryGetHashAndReset([], out _);
+
+            return true;
         }
 
         public async ValueTask<BlobFingerprint> CreateFingerprintAsync(Stream stream, CancellationToken cancellationToken)
@@ -149,14 +165,6 @@ public class StreamFingerprinter(ObjectPoolProvider pipePool) : IStreamFingerpri
             var fingerprint = new BlobFingerprint(totalLength, sha3Hash, sha256Hash, md5Hash);
 
             return fingerprint;
-        }
-
-        public void Reset()
-        {
-            _pipe.Reset();
-            _sha3.Initialize();
-            _sha256.TryGetHashAndReset([], out _);
-            _md5.TryGetHashAndReset([], out _);
         }
     }
 }

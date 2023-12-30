@@ -19,6 +19,7 @@
 // DEALINGS IN THE SOFTWARE.
 
 using System;
+using System.Collections.Frozen;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
@@ -36,8 +37,10 @@ public sealed class S3Blobs(IAmazonS3 amazon, IPathManager pathManager, S3Storag
     : S3PutBase(amazon)
 {
     const int KeyLength = 512 / 8;
+
     readonly IPathManager _pathManager = pathManager
         ?? throw new ArgumentNullException(nameof(pathManager));
+
     readonly S3StorageClass _s3StorageClass = s3StorageClass
         ?? throw new ArgumentNullException(nameof(s3StorageClass));
 
@@ -52,7 +55,7 @@ public sealed class S3Blobs(IAmazonS3 amazon, IPathManager pathManager, S3Storag
 
         await Task.WhenAll(tasks).ConfigureAwait(false);
 
-        return tasks.SelectMany(t => t.Result).ToDictionary(kv => kv.Key, kv => kv.Value, ByteArrayComparer.Instance);
+        return tasks.SelectMany(t => t.Result).ToFrozenDictionary(kv => kv.Key, kv => kv.Value, ByteArrayComparer.Instance);
     }
 
     async Task<Dictionary<byte[], string>> ListAsync(string prefix, Statistics statistics, CancellationToken cancellationToken)
@@ -145,22 +148,29 @@ public sealed class S3Blobs(IAmazonS3 amazon, IPathManager pathManager, S3Storag
         }
     }
 
-    public IUploadBlobRequest BuildUploadBlobRequest(Tuple<FileFingerprint, AnnotatedPath> tuple)
+    public IUploadBlobRequest BuildUploadBlobRequest((FileFingerprint fingerprint, AnnotatedPath path) tuple)
     {
-        Debug.WriteLine($"S3Blobs.BuildUploadRequest() {tuple.Item1.FullFilePath} ({tuple.Item1.Fingerprint.Key()[..12]})");
+        Debug.WriteLine(
+            $"S3Blobs.BuildUploadRequest() {tuple.fingerprint.FullFilePath} ({tuple.fingerprint.Fingerprint.Key()[..12]})");
 
-        var blobKey = _pathManager.GetBlobPath(tuple.Item1);
+        var fullFilePath = tuple.path.FileInfo.FullName;
 
-        var fullFilePath = tuple.Item2.FileInfo.FullName;
+        if (tuple.fingerprint.Invalid)
+        {
+            Debug.WriteLine($"BuildUploadRequest(): {fullFilePath} is invalid");
+            return null;
+        }
+
+        var blobKey = _pathManager.GetBlobPath(tuple.fingerprint);
 
         var fileInfo = new FileInfo(fullFilePath);
 
-        var fingerprint = tuple.Item1.Fingerprint;
+        var fingerprint = tuple.fingerprint.Fingerprint;
 
-        if (fileInfo.Length != fingerprint.Size || fileInfo.LastWriteTimeUtc != tuple.Item1.LastModifiedUtc)
+        if (fileInfo.Length != fingerprint.Size || fileInfo.LastWriteTimeUtc != tuple.fingerprint.LastModifiedUtc)
         {
             Debug.WriteLine(
-                $"BuildUploadRequest(): {fileInfo.FullName} changed {fingerprint.Size} != {fileInfo.Length} || {tuple.Item1.LastModifiedUtc} != {fileInfo.LastWriteTimeUtc} ({tuple.Item1.LastModifiedUtc - fileInfo.LastWriteTimeUtc})");
+                $"BuildUploadRequest(): {fileInfo.FullName} changed {fingerprint.Size} != {fileInfo.Length} || {tuple.fingerprint.LastModifiedUtc} != {fileInfo.LastWriteTimeUtc} ({tuple.fingerprint.LastModifiedUtc - fileInfo.LastWriteTimeUtc})");
 
             return null;
         }
@@ -179,7 +189,7 @@ public sealed class S3Blobs(IAmazonS3 amazon, IPathManager pathManager, S3Storag
                 ContentType = MimeDetector.GetMimeType(fullFilePath),
                 ContentLength = fingerprint.Size,
                 ContentMD5 = md5Digest,
-                ["x-amz-meta-lastModified"] = tuple.Item1.LastModifiedUtc.ToString("O"),
+                ["x-amz-meta-lastModified"] = tuple.fingerprint.LastModifiedUtc.ToString("O"),
                 ["x-amz-meta-sha2-256"] = base64Sha256,
                 ["x-amz-meta-sha3-512"] = Convert.ToBase64String(fingerprint.Sha3_512)
             },
@@ -190,11 +200,11 @@ public sealed class S3Blobs(IAmazonS3 amazon, IPathManager pathManager, S3Storag
             ChecksumAlgorithm = ChecksumAlgorithm.SHA256
         };
 
-        if (!string.IsNullOrEmpty(tuple.Item2.Collection))
-            request.Headers["x-amz-meta-original-collection"] = tuple.Item2.Collection;
+        if (!string.IsNullOrEmpty(tuple.path.Collection))
+            request.Headers["x-amz-meta-original-collection"] = tuple.path.Collection;
 
-        if (!string.IsNullOrEmpty(tuple.Item2.RelativePath))
-            request.Headers["x-amz-meta-original-path"] = tuple.Item2.RelativePath;
+        if (!string.IsNullOrEmpty(tuple.path.RelativePath))
+            request.Headers["x-amz-meta-original-path"] = tuple.path.RelativePath;
 
         var fileName = Path.GetFileName(fullFilePath);
 
@@ -208,7 +218,7 @@ public sealed class S3Blobs(IAmazonS3 amazon, IPathManager pathManager, S3Storag
         return new UploadBlobRequest
         {
             Request = request,
-            FileFingerprint = tuple.Item1,
+            FileFingerprint = tuple.fingerprint,
             ETag = S3Util.ComputeS3Etag(fingerprint.Md5),
             Key = blobKey
         };

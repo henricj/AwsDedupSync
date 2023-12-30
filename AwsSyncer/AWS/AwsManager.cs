@@ -33,7 +33,7 @@ namespace AwsSyncer.AWS;
 public interface IAwsManager : IDisposable
 {
     Task<IReadOnlyDictionary<byte[], string>> ScanAsync(CancellationToken cancellationToken);
-    S3Blobs.IUploadBlobRequest BuildUploadBlobRequest(Tuple<FileFingerprint, AnnotatedPath> tuple);
+    S3Blobs.IUploadBlobRequest BuildUploadBlobRequest((FileFingerprint fingerprint, AnnotatedPath path) tuple);
     Task UploadBlobAsync(S3Blobs.IUploadBlobRequest uploadBlobRequest, CancellationToken cancellationToken);
     Task<IReadOnlyDictionary<string, string>> GetLinksAsync(string name, CancellationToken cancellationToken);
 
@@ -99,7 +99,7 @@ public sealed class AwsManager : IAwsManager
         return s3Blobs;
     }
 
-    public S3Blobs.IUploadBlobRequest BuildUploadBlobRequest(Tuple<FileFingerprint, AnnotatedPath> tuple) =>
+    public S3Blobs.IUploadBlobRequest BuildUploadBlobRequest((FileFingerprint fingerprint, AnnotatedPath path) tuple) =>
         _s3Blobs.BuildUploadBlobRequest(tuple);
 
     public Task UploadBlobAsync(S3Blobs.IUploadBlobRequest uploadBlobRequest, CancellationToken cancellationToken) =>

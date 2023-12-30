@@ -33,7 +33,7 @@ using AwsSyncer.Utility;
 
 namespace AwsSyncer.FileBlobs;
 
-public interface IFileFingerprintManager : IDisposable
+public interface IFileFingerprintManager : IAsyncDisposable
 {
     Task ShutdownAsync(CancellationToken cancellationToken);
     Task LoadAsync(CancellationToken cancellationToken);
@@ -41,6 +41,8 @@ public interface IFileFingerprintManager : IDisposable
     Task GenerateFileFingerprintsAsync(ISourceBlock<AnnotatedPath[]> annotatedPathSourceBlock,
         ITargetBlock<FileFingerprint> fileFingerprintTargetBlock,
         CancellationToken cancellationToken);
+
+    void InvalidateFingerprint(FileFingerprint fingerprint);
 }
 
 public sealed class FileFingerprintManager(IFileFingerprintStore fileFingerprintStore, IStreamFingerprinter fingerprinter)
@@ -55,25 +57,33 @@ public sealed class FileFingerprintManager(IFileFingerprintStore fileFingerprint
     readonly IStreamFingerprinter _fingerprinter = fingerprinter
         ?? throw new ArgumentNullException(nameof(fingerprinter));
 
+    readonly ConcurrentBag<FileFingerprint> _invalidFingerprints = [];
+
     IReadOnlyDictionary<string, FileFingerprint> _previouslyCachedFileFingerprints;
 
-    public void Dispose()
+    public async ValueTask DisposeAsync()
     {
         try
         {
-            ShutdownAsync(CancellationToken.None).Wait();
+            await ShutdownAsync(CancellationToken.None).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
             Debug.WriteLine("FileFingerprintManager.Dispose() CancelWorker() failed: " + ex.Message);
         }
 
-        _blobPathStore.Dispose();
+        await _blobPathStore.DisposeAsync();
     }
 
     public async Task ShutdownAsync(CancellationToken cancellationToken)
     {
         Debug.WriteLine("FileFingerprintManager.ShutdownAsync()");
+
+        if (!_invalidFingerprints.IsEmpty)
+        {
+            await _blobPathStore.StoreBlobsAsync(_invalidFingerprints, cancellationToken).ConfigureAwait(false);
+            _invalidFingerprints.Clear();
+        }
 
         await _blobPathStore.CloseAsync(cancellationToken).ConfigureAwait(false);
     }
@@ -129,10 +139,22 @@ public sealed class FileFingerprintManager(IFileFingerprintStore fileFingerprint
         return Task.WhenAll(storeTask, transformTask);
     }
 
+    public void InvalidateFingerprint(FileFingerprint fingerprint)
+    {
+        fingerprint.Invalidate();
+        _invalidFingerprints.Add(fingerprint);
+    }
+
     FileFingerprint GetCachedFileFingerprint(FileInfo fileInfo)
     {
         if (!_previouslyCachedFileFingerprints.TryGetValue(fileInfo.FullName, out var fileFingerprint))
             return null;
+
+        if (fileFingerprint.Invalid)
+        {
+            Debug.WriteLine($"FileFingerprintManager.ProcessFileAsync() {fileInfo.FullName} is invalid");
+            return null;
+        }
 
         if (fileFingerprint.Fingerprint.Size != fileInfo.Length || fileFingerprint.LastModifiedUtc != fileInfo.LastWriteTimeUtc)
         {
@@ -213,7 +235,7 @@ public sealed class FileFingerprintManager(IFileFingerprintStore fileFingerprint
         return block.Completion;
     }
 
-    async Task WriteBlobsAsync(ICollection<FileFingerprint> fileFingerprints, CancellationToken cancellationToken)
+    async Task WriteBlobsAsync(IReadOnlyCollection<FileFingerprint> fileFingerprints, CancellationToken cancellationToken)
     {
         Debug.WriteLine($"FileFingerprintManager writing {fileFingerprints.Count} items to db");
 
@@ -228,7 +250,7 @@ public sealed class FileFingerprintManager(IFileFingerprintStore fileFingerprint
     }
 
     async Task TransformAnnotatedPathsToFileFingerprint(ISourceBlock<AnnotatedPath[]> annotatedPathSourceBlock,
-        ITargetBlock<FileFingerprint> fileFingerprintTargetBlock,
+        BroadcastBlock<FileFingerprint> fileFingerprintTargetBlock,
         CancellationToken cancellationToken)
     {
         try
@@ -256,27 +278,24 @@ public sealed class FileFingerprintManager(IFileFingerprintStore fileFingerprint
 
                         var host = PathUtil.GetHost(filename.FileInfo.FullName);
 
-                        TransformBlock<AnnotatedPath, FileFingerprint> target;
-                        while (!targets.TryGetValue(host, out target))
+
+                        var target = targets.GetOrAdd(host, h =>
                         {
-                            target = new(
+                            var ret = new TransformBlock<AnnotatedPath, FileFingerprint>(
                                 annotatedPath => ProcessFileAsync(annotatedPath.FileInfo, cancellationToken),
                                 new()
                                 {
-                                    MaxDegreeOfParallelism = 5,
+                                    MaxDegreeOfParallelism = 64,
                                     CancellationToken = cancellationToken
                                 });
 
-                            if (!targets.TryAdd(host, target))
-                                continue;
-
                             Debug.WriteLine($"FileFingerprintManager.GenerateBlobsAsync() starting reader for host: '{host}'");
 
-                            target.LinkTo(fileFingerprintTargetBlock, blob => null != blob);
-                            target.LinkTo(DataflowBlock.NullTarget<FileFingerprint>());
+                            ret.LinkTo(fileFingerprintTargetBlock, blob => null != blob);
+                            ret.LinkTo(DataflowBlock.NullTarget<FileFingerprint>());
 
-                            break;
-                        }
+                            return ret;
+                        });
 
                         //Debug.WriteLine($"FileFingerprintManager.GenerateFileFingerprintsAsync() Sending {annotatedPath} for host '{host}'");
 
@@ -285,11 +304,11 @@ public sealed class FileFingerprintManager(IFileFingerprintStore fileFingerprint
                 },
                 new()
                 {
-                    MaxDegreeOfParallelism = 16,
+                    MaxDegreeOfParallelism = 64,
                     CancellationToken = cancellationToken
                 });
 
-            var distinctPaths = new HashSet<string>(StringComparer.InvariantCultureIgnoreCase);
+            var distinctPaths = new HashSet<string>(StringComparer.Ordinal);
 
             var distinctBlock = new TransformBlock<AnnotatedPath[], AnnotatedPath[]>(
                 annotatedPaths =>

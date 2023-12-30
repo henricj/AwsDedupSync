@@ -29,26 +29,26 @@ using AwsSyncer.Types;
 
 namespace AwsSyncer;
 
-public class LinkManager
+public static class LinkManager
 {
     public static async Task CreateLinksAsync(IAwsManager awsManager,
-        ISourceBlock<Tuple<AnnotatedPath, FileFingerprint>> blobSourceBlock,
+        ISourceBlock<(AnnotatedPath path, FileFingerprint fingerprint)> blobSourceBlock,
         bool actuallyWrite,
         CancellationToken cancellationToken)
     {
-        var collectionBlocks = new Dictionary<string, ITargetBlock<Tuple<AnnotatedPath, FileFingerprint>>>();
+        var collectionBlocks = new Dictionary<string, ITargetBlock<(AnnotatedPath path, FileFingerprint fingerprint)>>();
         var tasks = new List<Task>();
 
-        var routeBlock = new ActionBlock<Tuple<AnnotatedPath, FileFingerprint>>(async blob =>
+        var routeBlock = new ActionBlock<(AnnotatedPath path, FileFingerprint fingerprint)>(async blob =>
         {
-            var collection = blob.Item1.Collection;
+            var collection = blob.path.Collection;
 
             if (string.IsNullOrEmpty(collection))
                 return;
 
             if (!collectionBlocks.TryGetValue(collection, out var collectionBlock))
             {
-                var bufferBlock = new BufferBlock<Tuple<AnnotatedPath, FileFingerprint>>();
+                var bufferBlock = new BufferBlock<(AnnotatedPath path, FileFingerprint fingerprint)>();
 
                 collectionBlock = bufferBlock;
 
@@ -78,7 +78,7 @@ public class LinkManager
 
     static async Task CreateLinksBlockAsync(IAwsManager awsManager,
         string collection,
-        ISourceBlock<Tuple<AnnotatedPath, FileFingerprint>> collectionBlock,
+        BufferBlock<(AnnotatedPath path, FileFingerprint fingerprint)> collectionBlock,
         bool actuallyWrite,
         CancellationToken cancellationToken)
     {
@@ -94,11 +94,11 @@ public class LinkManager
                 CancellationToken = cancellationToken
             });
 
-        var makeLinkBlock = new TransformBlock<Tuple<AnnotatedPath, FileFingerprint>, S3Links.ICreateLinkRequest>(
+        var makeLinkBlock = new TransformBlock<(AnnotatedPath path, FileFingerprint fingerprint), S3Links.ICreateLinkRequest>(
             tuple =>
             {
-                var path = tuple.Item1;
-                var file = tuple.Item2;
+                var path = tuple.path;
+                var file = tuple.fingerprint;
 
                 if (collection != path.Collection)
                     throw new InvalidOperationException($"Create link for {path.Collection} on {collection}");

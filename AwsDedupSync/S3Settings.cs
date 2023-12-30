@@ -20,7 +20,7 @@
 
 namespace AwsDedupSync;
 
-public class S3Settings
+public sealed class S3Settings
 {
     public bool ActuallyWrite { get; init; } = true;
     public bool UpdateLinks { get; init; } = true;

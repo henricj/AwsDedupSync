@@ -40,7 +40,8 @@ public class S3PathSyncer
     static readonly DataflowLinkOptions DataflowLinkOptionsPropagateEnabled
         = new() { PropagateCompletion = true };
 
-    readonly S3BlobUploader _s3BlobUploader;
+    readonly DefaultObjectPoolProvider _objectPoolProvider = new() { MaximumRetained = 128 };
+
     readonly S3LinkCreator _s3LinkCreator;
 
     public S3Settings S3Settings { get; } = new()
@@ -50,11 +51,7 @@ public class S3PathSyncer
         UploadBlobs = false
     };
 
-    public S3PathSyncer()
-    {
-        _s3BlobUploader = new(S3Settings);
-        _s3LinkCreator = new(S3Settings);
-    }
+    public S3PathSyncer() => _s3LinkCreator = new(S3Settings);
 
     public async Task SyncPathsAsync(IConfiguration config, IEnumerable<string> paths, Func<FileInfo, bool> filePredicate,
         CancellationToken cancellationToken)
@@ -66,8 +63,6 @@ public class S3PathSyncer
 
         Console.WriteLine($"Targeting bucket {bucket}");
 
-        // BEWARE:  This could cause trouble if there are
-        // any case-sensitive paths involved.
         var namedPaths = (from arg in paths
                 let split = arg.IndexOf('=')
                 let validSplit = split > 0 && split < arg.Length - 1
@@ -76,26 +71,29 @@ public class S3PathSyncer
             .Distinct()
             .ToArray();
 
-        var objectPoolProvider = new DefaultObjectPoolProvider();
+        await using var fileFingerprintManager = new FileFingerprintManager(
+            new MessagePackFileFingerprintStore(bucket),
+            new StreamFingerprinter(_objectPoolProvider)
+        );
+        await using var blobManager = new BlobManager(fileFingerprintManager);
 
-        using var blobManager =
-            new BlobManager(new FileFingerprintManager(new MessagePackFileFingerprintStore(bucket),
-                new StreamFingerprinter(objectPoolProvider)));
+        var s3BlobUploader = new S3BlobUploader(S3Settings, fileFingerprintManager);
+
         try
         {
             using var awsManager = AwsManagerFactory.Create(bucket, config);
-            var uniqueFingerprintBlock = new BufferBlock<Tuple<FileFingerprint, AnnotatedPath>>();
-            var linkBlock = new BufferBlock<Tuple<AnnotatedPath, FileFingerprint>>();
+            var uniqueFingerprintBlock = new BufferBlock<(FileFingerprint fingerprint, AnnotatedPath path)>();
+            var linkBlock = new BufferBlock<(AnnotatedPath path, FileFingerprint fingerprint)>();
 
             var uniqueFingerprints = new HashSet<BlobFingerprint>();
 
-            var uniqueFingerprintFilterBlock = new ActionBlock<Tuple<AnnotatedPath, FileFingerprint>>(
+            var uniqueFingerprintFilterBlock = new ActionBlock<(AnnotatedPath path, FileFingerprint fingerprint)>(
                 t =>
                 {
-                    if (!uniqueFingerprints.Add(t.Item2.Fingerprint))
+                    if (!uniqueFingerprints.Add(t.fingerprint.Fingerprint))
                         return Task.CompletedTask;
 
-                    return uniqueFingerprintBlock.SendAsync(Tuple.Create(t.Item2, t.Item1), cancellationToken);
+                    return uniqueFingerprintBlock.SendAsync((t.fingerprint, t.path), cancellationToken);
                 }, new() { CancellationToken = cancellationToken });
 
             var uniqueCompletionTask = uniqueFingerprintFilterBlock
@@ -103,7 +101,7 @@ public class S3PathSyncer
 
             TaskCollector.Default.Add(uniqueCompletionTask, "Unique filter completion");
 
-            var joinedBroadcastBlock = new BroadcastBlock<Tuple<AnnotatedPath, FileFingerprint>>(t => t,
+            var joinedBroadcastBlock = new BroadcastBlock<(AnnotatedPath path, FileFingerprint fingerprint)>(t => t,
                 new() { CancellationToken = cancellationToken });
 
             joinedBroadcastBlock.LinkTo(linkBlock, DataflowLinkOptionsPropagateEnabled);
@@ -131,7 +129,7 @@ public class S3PathSyncer
                 if (S3Settings.UploadBlobs)
                 {
                     // ReSharper disable once AccessToDisposedClosure
-                    uploadBlobsTask = _s3BlobUploader.UploadBlobsAsync(awsManager, uniqueFingerprintBlock, knownObjects,
+                    uploadBlobsTask = s3BlobUploader.UploadBlobsAsync(awsManager, uniqueFingerprintBlock, knownObjects,
                         cancellationToken);
                 }
             }, cancellationToken);
@@ -145,7 +143,7 @@ public class S3PathSyncer
         }
         finally
         {
-            await blobManager.ShutdownAsync(cancellationToken).ConfigureAwait(false);
+            await fileFingerprintManager.ShutdownAsync(cancellationToken).ConfigureAwait(false);
         }
     }
 

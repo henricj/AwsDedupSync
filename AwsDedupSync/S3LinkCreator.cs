@@ -29,19 +29,12 @@ using AwsSyncer.Types;
 
 namespace AwsDedupSync;
 
-public class S3LinkCreator
+public class S3LinkCreator(S3Settings s3Settings)
 {
-    readonly LinkManager _linkManager;
-    readonly S3Settings _s3Settings;
-
-    public S3LinkCreator(S3Settings s3Settings)
-    {
-        _s3Settings = s3Settings;
-        _linkManager = new();
-    }
+    readonly S3Settings _s3Settings = s3Settings;
 
     public async Task UpdateLinksAsync(IAwsManager awsManager,
-        ISourceBlock<Tuple<AnnotatedPath, FileFingerprint>> linkBlobs,
+        ISourceBlock<(AnnotatedPath path, FileFingerprint fingerprint)> linkBlobs,
         CancellationToken cancellationToken)
     {
         try

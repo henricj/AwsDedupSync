@@ -28,14 +28,12 @@ using AwsSyncer.Types;
 
 namespace AwsSyncer.FileBlobs;
 
-public interface IBlobManager : IDisposable
+public interface IBlobManager : IAsyncDisposable
 {
     Task LoadAsync(CollectionPath[] paths,
         Func<FileInfo, bool> filePredicate,
-        ITargetBlock<Tuple<AnnotatedPath, FileFingerprint>> joinedTargetBlock,
+        ITargetBlock<(AnnotatedPath path, FileFingerprint fingerprint)> joinedTargetBlock,
         CancellationToken cancellationToken);
-
-    Task ShutdownAsync(CancellationToken cancellationToken);
 }
 
 public sealed class BlobManager(IFileFingerprintManager fileFingerprintManager) : IBlobManager
@@ -43,15 +41,15 @@ public sealed class BlobManager(IFileFingerprintManager fileFingerprintManager) 
     readonly IFileFingerprintManager _fileFingerprintManager = fileFingerprintManager
         ?? throw new ArgumentNullException(nameof(fileFingerprintManager));
 
-    #region IDisposable Members
+    #region IAsyncDisposable Members
 
-    public void Dispose() => _fileFingerprintManager.Dispose();
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 
     #endregion
 
     public async Task LoadAsync(CollectionPath[] paths,
         Func<FileInfo, bool> filePredicate,
-        ITargetBlock<Tuple<AnnotatedPath, FileFingerprint>> joinedTargetBlock,
+        ITargetBlock<(AnnotatedPath path, FileFingerprint fingerprint)> joinedTargetBlock,
         CancellationToken cancellationToken)
     {
         await _fileFingerprintManager.LoadAsync(cancellationToken).ConfigureAwait(false);
@@ -60,16 +58,9 @@ public sealed class BlobManager(IFileFingerprintManager fileFingerprintManager) 
             .ConfigureAwait(false);
     }
 
-    public Task ShutdownAsync(CancellationToken cancellationToken)
-    {
-        Debug.WriteLine("BlobManager.ShutdownAsync()");
-
-        return _fileFingerprintManager.ShutdownAsync(cancellationToken);
-    }
-
     async Task GenerateFileFingerprintsAsync(CollectionPath[] paths,
         Func<FileInfo, bool> filePredicate,
-        ITargetBlock<Tuple<AnnotatedPath, FileFingerprint>> joinedTargetBlock,
+        ITargetBlock<(AnnotatedPath path, FileFingerprint fingerprint)> joinedTargetBlock,
         CancellationToken cancellationToken)
     {
         try

@@ -6,11 +6,11 @@ using AwsSyncer.Types;
 
 namespace AwsSyncer.FingerprintStore;
 
-public interface IFileFingerprintStore : IDisposable
+public interface IFileFingerprintStore : IAsyncDisposable
 {
     int UpdateCount { get; }
     long UpdateSize { get; }
     Task<IReadOnlyDictionary<string, FileFingerprint>> LoadBlobsAsync(CancellationToken cancellationToken);
     Task CloseAsync(CancellationToken cancellationToken);
-    Task StoreBlobsAsync(ICollection<FileFingerprint> fileFingerprints, CancellationToken cancellationToken);
+    Task StoreBlobsAsync(IReadOnlyCollection<FileFingerprint> fileFingerprints, CancellationToken cancellationToken);
 }

@@ -22,16 +22,10 @@ using System;
 
 namespace AwsSyncer.Types;
 
-public sealed class CollectionPath : IEquatable<CollectionPath>
+public sealed class CollectionPath(string collection, string path) : IEquatable<CollectionPath>
 {
-    public string Collection { get; }
-    public string Path { get; }
-
-    public CollectionPath(string collection, string path)
-    {
-        Collection = collection ?? throw new ArgumentNullException(nameof(collection));
-        Path = path ?? throw new ArgumentNullException(nameof(path));
-    }
+    public string Collection { get; } = collection ?? throw new ArgumentNullException(nameof(collection));
+    public string Path { get; } = path ?? throw new ArgumentNullException(nameof(path));
 
     public bool Equals(CollectionPath other)
     {
@@ -40,11 +34,11 @@ public sealed class CollectionPath : IEquatable<CollectionPath>
         if (ReferenceEquals(this, other))
             return true;
 
-        return string.Equals(Collection, other.Collection, StringComparison.OrdinalIgnoreCase) &&
-            string.Equals(Path, other.Path, StringComparison.OrdinalIgnoreCase);
+        return string.Equals(Collection, other.Collection, StringComparison.OrdinalIgnoreCase)
+            && string.Equals(Path, other.Path, StringComparison.Ordinal);
     }
 
-    public override string ToString() => '[' + Collection + ']' + Path;
+    public override string ToString() => $"[{Collection}]{Path}";
 
     public override bool Equals(object obj)
     {
@@ -60,8 +54,8 @@ public sealed class CollectionPath : IEquatable<CollectionPath>
     {
         unchecked
         {
-            return (StringComparer.OrdinalIgnoreCase.GetHashCode(Collection) * 397) ^
-                StringComparer.OrdinalIgnoreCase.GetHashCode(Path);
+            return (StringComparer.OrdinalIgnoreCase.GetHashCode(Collection) * 397)
+                ^ StringComparer.OrdinalIgnoreCase.GetHashCode(Path);
         }
     }
 

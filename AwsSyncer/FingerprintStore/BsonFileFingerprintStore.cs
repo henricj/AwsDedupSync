@@ -19,6 +19,7 @@
 // DEALINGS IN THE SOFTWARE.
 
 using System;
+using System.Collections.Frozen;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
@@ -52,7 +53,7 @@ public sealed class BsonFileFingerprintStore : IFileFingerprintStore
     public int UpdateCount { get; private set; }
     public long UpdateSize { get; private set; }
 
-    public void Dispose()
+    public ValueTask DisposeAsync()
     {
         try
         {
@@ -64,6 +65,8 @@ public sealed class BsonFileFingerprintStore : IFileFingerprintStore
         }
 
         _lock.Dispose();
+
+        return ValueTask.CompletedTask;
     }
 
     public async Task<IReadOnlyDictionary<string, FileFingerprint>> LoadBlobsAsync(CancellationToken cancellationToken)
@@ -73,7 +76,7 @@ public sealed class BsonFileFingerprintStore : IFileFingerprintStore
             var ret = await LoadBlobCacheRetryAsync(cancellationToken).ConfigureAwait(false);
 
             if (null != ret)
-                return ret;
+                return ret.ToFrozenDictionary(StringComparer.OrdinalIgnoreCase);
         }
         catch (JsonReaderException)
         {
@@ -105,7 +108,7 @@ public sealed class BsonFileFingerprintStore : IFileFingerprintStore
         }
     }
 
-    public async Task StoreBlobsAsync(ICollection<FileFingerprint> fileFingerprints, CancellationToken cancellationToken)
+    public async Task StoreBlobsAsync(IReadOnlyCollection<FileFingerprint> fileFingerprints, CancellationToken cancellationToken)
     {
         using (await _lock.LockAsync(cancellationToken).ConfigureAwait(false))
         {
@@ -175,7 +178,7 @@ public sealed class BsonFileFingerprintStore : IFileFingerprintStore
 
     async Task<IReadOnlyDictionary<string, FileFingerprint>> LoadBlobsImplAsync(CancellationToken cancellationToken)
     {
-        var blobs = new Dictionary<string, FileFingerprint>();
+        var blobs = new Dictionary<string, FileFingerprint>(StringComparer.OrdinalIgnoreCase);
 
         var needRebuild = false;
 
@@ -279,7 +282,7 @@ public sealed class BsonFileFingerprintStore : IFileFingerprintStore
         return blobs;
     }
 
-    static async Task<FileFingerprint> ReadFileFingerprintAsync(JsonReader reader, CancellationToken cancellationToken)
+    static async Task<FileFingerprint> ReadFileFingerprintAsync(BsonDataReader reader, CancellationToken cancellationToken)
     {
         if (JsonToken.StartObject != reader.TokenType)
             throw new JsonReaderException("State not object");
@@ -341,7 +344,7 @@ public sealed class BsonFileFingerprintStore : IFileFingerprintStore
         return null;
     }
 
-    static async Task WriteFileFingerprintAsync(JsonWriter writer, FileFingerprint blob, CancellationToken cancellationToken)
+    static async Task WriteFileFingerprintAsync(BsonDataWriter writer, FileFingerprint blob, CancellationToken cancellationToken)
     {
         if (writer.WriteState != WriteState.Start)
             throw new JsonWriterException("State not closed");
@@ -414,7 +417,7 @@ public sealed class BsonFileFingerprintStore : IFileFingerprintStore
             tempFileInfo?.Delete();
     }
 
-    async Task StoreBlobsImplAsync(ICollection<FileFingerprint> fileFingerprints, CancellationToken cancellationToken)
+    async Task StoreBlobsImplAsync(IEnumerable<FileFingerprint> fileFingerprints, CancellationToken cancellationToken)
     {
         OpenWriter();
 

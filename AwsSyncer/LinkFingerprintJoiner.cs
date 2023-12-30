@@ -31,14 +31,14 @@ namespace AwsSyncer;
 
 sealed class LinkFingerprintJoiner
 {
-    readonly ConcurrentDictionary<string, PathFingerprint> _join = new(StringComparer.CurrentCultureIgnoreCase);
+    readonly ConcurrentDictionary<string, PathFingerprint> _join = new(StringComparer.OrdinalIgnoreCase);
 
-    readonly ITargetBlock<Tuple<AnnotatedPath, FileFingerprint>> _targetBlock;
+    readonly ITargetBlock<(AnnotatedPath path, FileFingerprint fingerprint)> _targetBlock;
 
     public ITargetBlock<AnnotatedPath[]> AnnotatedPathsBlock { get; }
     public ITargetBlock<FileFingerprint> FileFingerprintBlock { get; }
 
-    public LinkFingerprintJoiner(ITargetBlock<Tuple<AnnotatedPath, FileFingerprint>> targetBlock)
+    public LinkFingerprintJoiner(ITargetBlock<(AnnotatedPath path, FileFingerprint fingerprint)> targetBlock)
     {
         _targetBlock = targetBlock ?? throw new ArgumentNullException(nameof(targetBlock));
 
@@ -88,7 +88,7 @@ sealed class LinkFingerprintJoiner
             annotatedPaths = [.. pathFingerprint.AnnotatedPaths.Values];
         }
 
-        var tasks = annotatedPaths.Select(ap => _targetBlock.SendAsync(Tuple.Create(ap, fileFingerprint)));
+        var tasks = annotatedPaths.Select(ap => _targetBlock.SendAsync((ap, fileFingerprint)));
 
         return Task.WhenAll(tasks);
     }
@@ -97,32 +97,40 @@ sealed class LinkFingerprintJoiner
     {
         var pathFingerprint = GetPathFingerprint(annotatedPath.FileInfo.FullName);
 
-        var key = Tuple.Create(annotatedPath.Collection, annotatedPath.RelativePath);
+        var key = (annotatedPath.Collection, annotatedPath.RelativePath);
 
         FileFingerprint fileFingerprint;
 
         lock (pathFingerprint)
         {
-            if (pathFingerprint.AnnotatedPaths.ContainsKey(key))
+            if (!pathFingerprint.AnnotatedPaths.TryAdd(key, annotatedPath))
             {
                 throw new InvalidOperationException("Duplicate collection/relative path for " +
                     annotatedPath.FileInfo.FullName);
             }
 
-            pathFingerprint.AnnotatedPaths[key] = annotatedPath;
-
             fileFingerprint = pathFingerprint.FileFingerprint;
         }
 
-        if (null == fileFingerprint)
+        if (fileFingerprint is null)
             return Task.CompletedTask;
 
-        return _targetBlock.SendAsync(Tuple.Create(annotatedPath, fileFingerprint));
+        return _targetBlock.SendAsync((annotatedPath, fileFingerprint));
+    }
+
+    sealed class CollectionPathComparer : IEqualityComparer<(string collection, string path)>
+    {
+        public bool Equals((string collection, string path) x, (string collection, string path) y)
+            => string.Equals(x.collection, y.collection, StringComparison.OrdinalIgnoreCase)
+                && string.Equals(x.path, y.path, StringComparison.OrdinalIgnoreCase);
+
+        public int GetHashCode((string collection, string path) obj) => obj.GetHashCode();
     }
 
     sealed class PathFingerprint
     {
-        public readonly Dictionary<Tuple<string, string>, AnnotatedPath> AnnotatedPaths = [];
+        public readonly Dictionary<(string collection, string path), AnnotatedPath> AnnotatedPaths =
+            new(new CollectionPathComparer());
 
         public FileFingerprint FileFingerprint;
     }

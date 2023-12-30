@@ -32,6 +32,8 @@ public sealed class FileFingerprint : IEquatable<FileFingerprint>
 
     [DataMember(Order = 2)] public BlobFingerprint Fingerprint { get; }
 
+    [DataMember(Order = 3)] public bool Invalid { get; private set; }
+
     [IgnoreDataMember] public bool WasCached { get; } = true;
 
     public FileFingerprint(string fullFilePath, DateTime lastModifiedUtc, BlobFingerprint fingerprint)
@@ -56,7 +58,7 @@ public sealed class FileFingerprint : IEquatable<FileFingerprint>
         if (ReferenceEquals(this, other))
             return true;
 
-        return string.Equals(FullFilePath, other.FullFilePath, StringComparison.OrdinalIgnoreCase)
+        return string.Equals(FullFilePath, other.FullFilePath, StringComparison.Ordinal)
             && LastModifiedUtc.Equals(other.LastModifiedUtc)
             && Fingerprint.Equals(other.Fingerprint);
     }
@@ -75,10 +77,9 @@ public sealed class FileFingerprint : IEquatable<FileFingerprint>
     {
         unchecked
         {
-            var hashCode = StringComparer.OrdinalIgnoreCase.GetHashCode(FullFilePath);
+            var hashCode = StringComparer.Ordinal.GetHashCode(FullFilePath);
             hashCode = (hashCode * 397) ^ LastModifiedUtc.GetHashCode();
             hashCode = (hashCode * 397) ^ Fingerprint.GetHashCode();
-            hashCode = (hashCode * 397) ^ WasCached.GetHashCode();
             return hashCode;
         }
     }
@@ -86,4 +87,6 @@ public sealed class FileFingerprint : IEquatable<FileFingerprint>
     public static bool operator ==(FileFingerprint left, FileFingerprint right) => Equals(left, right);
 
     public static bool operator !=(FileFingerprint left, FileFingerprint right) => !Equals(left, right);
+
+    public void Invalidate() => Invalid = true;
 }
