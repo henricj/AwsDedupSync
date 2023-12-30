@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2014-2017 Henric Jungheim <software@henric.org>
+// Copyright (c) 2014-2017 Henric Jungheim <software@henric.org>
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a
 // copy of this software and associated documentation files (the "Software"),
@@ -30,13 +30,19 @@ public sealed class BlobFingerprint : IEquatable<BlobFingerprint>
 {
     [DataMember(Order = 0)] public long Size { get; }
 
-    [DataMember(Order = 1)] public byte[] Sha3_512 { get; }
+    [DataMember(Order = 1)]
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Naming", "CA1707:Identifiers should not contain underscores", Justification = "Removing it would combine the numbers.")]
+    public byte[] Sha3_512 { get; }
 
-    [DataMember(Order = 2)] public byte[] Sha2_256 { get; }
+    [DataMember(Order = 2)]
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Naming", "CA1707:Identifiers should not contain underscores", Justification = "Removing it would combine the numbers.")]
+    public byte[] Sha2_256 { get; }
 
     [DataMember(Order = 3)] public byte[] Md5 { get; }
 
+#pragma warning disable CA1707 // Identifiers should not contain underscores
     public BlobFingerprint(long size, byte[] sha3_512, byte[] sha2_256, byte[] md5)
+#pragma warning restore CA1707 // Identifiers should not contain underscores
     {
         if (size < 0)
             throw new ArgumentOutOfRangeException(nameof(size), size, "size cannot be negative");

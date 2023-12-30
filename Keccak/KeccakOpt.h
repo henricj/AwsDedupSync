@@ -17,14 +17,14 @@ public ref class Keccak sealed
     static Keccak();
 
 public:
-    const static int HashSizeInBytes = 64;
+    static constexpr int HashSizeInBytes = 64;
 
     Keccak();
     ~Keccak();
 
     static void Validate();
-    void AppendData(ReadOnlySpan<unsigned char> data);
+    void AppendData(const unsigned char* data, int length);
     void Initialize();
-    void GetHashAndReset(Span<unsigned char> hash);
+    void GetHashAndReset(unsigned char* hash, int length);
 };
 }

@@ -224,7 +224,7 @@ public sealed class FileFingerprintManager(IFileFingerprintStore fileFingerprint
         }
     }
 
-    Task StoreFileFingerprintsAsync(ISourceBlock<FileFingerprint[]> storeBatchBlock, CancellationToken cancellationToken)
+    Task StoreFileFingerprintsAsync(BatchBlock<FileFingerprint> storeBatchBlock, CancellationToken cancellationToken)
     {
         var block = new ActionBlock<FileFingerprint[]>(
             fileFingerprints => WriteBlobsAsync(fileFingerprints, cancellationToken),

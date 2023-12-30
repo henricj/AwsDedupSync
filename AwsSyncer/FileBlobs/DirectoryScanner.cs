@@ -83,8 +83,7 @@ public static class DirectoryScanner
 
         var task = Task.WhenAll(scanTasks);
 
-        var localFilePathTargetBlock = (ITargetBlock<AnnotatedPath>)batcher;
-
+        var localFilePathTargetBlock = batcher;
         var completeTask = task.ContinueWith(_ => localFilePathTargetBlock.Complete(), cancellationToken);
 
         TaskCollector.Default.Add(completeTask, "GenerateAnnotatedPathsAsync");

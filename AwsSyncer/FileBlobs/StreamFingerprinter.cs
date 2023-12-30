@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2014, 2017, 2023 Henric Jungheim <software@henric.org>
+// Copyright (c) 2014, 2017, 2023 Henric Jungheim <software@henric.org>
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a
 // copy of this software and associated documentation files (the "Software"),
@@ -66,7 +66,7 @@ public sealed class StreamFingerprinter(ObjectPoolProvider pipePool) : IStreamFi
         readonly IncrementalHash _md5 = IncrementalHash.CreateHash(HashAlgorithmName.MD5);
         readonly Pipe _pipe = new(PipeOptions);
         readonly IncrementalHash _sha256 = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
-        readonly Keccak _sha3 = new();
+        readonly Sha3Wrapper _sha3 = new();
 
         public void Dispose()
         {

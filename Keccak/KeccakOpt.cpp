@@ -141,7 +141,7 @@ bool Validate0(Keccak_HashInstance& hash)
     if constexpr (sizeof(Hash0) != sizeof(buffer))
         return false;
 
-    return std::equal(std::begin(Hash0), std::end(Hash0), stdext::make_unchecked_array_iterator(buffer));
+    return std::equal(std::begin(Hash0), std::end(Hash0), buffer);
 }
 
 bool Validate(Keccak_HashInstance& hash, const TestVector& testVector)
@@ -166,8 +166,7 @@ bool Validate(Keccak_HashInstance& hash, const TestVector& testVector)
 
     auto result = Keccak_HashFinal(&hash, buffer);
 
-    auto isOk = std::equal(std::begin(buffer), std::end(buffer),
-                           stdext::make_unchecked_array_iterator(testVector.Hash));
+    auto isOk = std::equal(std::begin(buffer), std::end(buffer), testVector.Hash);
 
     if (!isOk)
         printf("Validate %d mismatch\n", testVector.BitLength);
@@ -215,20 +214,15 @@ Keccak::Keccak()
 
 Keccak::~Keccak() {}
 
-void Keccak::AppendData(ReadOnlySpan<unsigned char> data)
+void Keccak::AppendData(const unsigned char* data, int length)
 {
-    const auto length = data.Length;
     if (length < 0)
         throw gcnew ArgumentOutOfRangeException(L"length");
 
     if (length < 1)
         return;
 
-    pin_ptr<const unsigned char> p = &data.GetPinnableReference();
-
-    auto ret = Keccak_HashUpdate(hash_.Get(), p, length * 8);
-
-    p = nullptr;
+    auto ret = Keccak_HashUpdate(hash_.Get(), data, length * 8);
 
     if (SUCCESS != ret)
         throw gcnew Security::Cryptography::CryptographicException(L"Internal error");
@@ -240,14 +234,12 @@ void Keccak::Initialize() {
         throw gcnew Security::Cryptography::CryptographicException(L"Internal error");
 }
 
-void Keccak::GetHashAndReset(Span<unsigned char> hash)
+void Keccak::GetHashAndReset(unsigned char* hash, int length)
 {
-    if (hash.Length != hash_->fixedOutputLength / 8)
+    if (length != hash_->fixedOutputLength / 8)
         throw gcnew ArgumentOutOfRangeException(L"hash");
 
-    pin_ptr<unsigned char> p = &hash.GetPinnableReference();
-
-    Keccak_HashFinal(hash_.Get(), p);
+    Keccak_HashFinal(hash_.Get(), hash);
 
     Initialize();
 }
