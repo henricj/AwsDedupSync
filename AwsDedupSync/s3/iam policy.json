@@ -64,7 +64,8 @@
       "Effect": "Allow",
       "Action": [
         "s3:AbortMultipartUpload",
-        "s3:PutObject"
+        "s3:PutObject",
+        "s3:PutObjectAcl"
       ],
       "Resource": [
         "arn:aws:s3:::images.henric.org/b/*",
