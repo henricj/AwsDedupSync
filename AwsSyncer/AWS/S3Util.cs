@@ -19,45 +19,39 @@
 // DEALINGS IN THE SOFTWARE.
 
 using System;
-using System.Collections.Generic;
-using System.Linq;
 using Microsoft.AspNetCore.WebUtilities;
 
 namespace AwsSyncer.AWS;
 
 public static class S3Util
 {
-    public static IReadOnlyCollection<char> KeyAlphabet { get; }
-
-    static S3Util() => KeyAlphabet = DiscoverAlphabet();
+    public static string KeyAlphabet => "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
 
     public static string ComputeS3Etag(byte[] md5Digest) =>
-        '"' + BitConverter.ToString(md5Digest).Replace("-", string.Empty) + '"';
+        $"\"{Convert.ToHexString(md5Digest).ToLowerInvariant()}\"";
 
-    static char[] DiscoverAlphabet()
+    public static string S3EncodeKey(ReadOnlySpan<byte> value) => WebEncoders.Base64UrlEncode(value);
+
+    public static byte[] DecodeKey(string value, int offset = 0, int count = 0)
     {
-        var buffer = new byte[3];
-        var alphabet = new HashSet<char>();
+        if (offset < 0 || offset >= value.Length)
+            throw new ArgumentOutOfRangeException(nameof(offset));
+        if (count < 0 || offset + count > value.Length)
+            throw new ArgumentOutOfRangeException(nameof(count));
 
-        for (var i = (int)byte.MinValue; i <= byte.MaxValue; ++i)
+        if (count == 0)
+            count = value.Length - offset;
+
+        if (count == 0)
+            return [];
+
+        try
         {
-            buffer[0] = (byte)i;
-
-            var encoded = S3EncodeKey(buffer);
-
-            foreach (var ch in encoded)
-                alphabet.Add(ch);
+            return WebEncoders.Base64UrlDecode(value, offset, count);
         }
-
-        //Debug.WriteLine($"alphabet has {alphabet.Count} letters");
-
-        if (64 != alphabet.Count)
-            return null;
-
-        return [.. alphabet.OrderBy(c => c)];
+        catch (FormatException)
+        {
+            return [];
+        }
     }
-
-    public static string S3EncodeKey(byte[] value) => Base64UrlTextEncoder.Encode(value);
-
-    public static byte[] DecodeKey(string value) => Base64UrlTextEncoder.Decode(value);
 }
