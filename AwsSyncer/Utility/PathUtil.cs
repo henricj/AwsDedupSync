@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2014-2016 Henric Jungheim <software@henric.org>
+// Copyright (c) 2014-2016 Henric Jungheim <software@henric.org>
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a
 // copy of this software and associated documentation files (the "Software"),
@@ -22,6 +22,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using System.Text;
 
 namespace AwsSyncer.Utility;
@@ -67,12 +68,23 @@ public static class PathUtil
     /// <returns></returns>
     public static string NormalizeAsciiName(string value)
     {
-        if (string.IsNullOrWhiteSpace(value))
+        if (string.IsNullOrWhiteSpace(value) || value.Length > 1024)
             return null;
+
+        if (value.All(c => c > 32 && c < 127))
+            return value;
 
         // This really isn't enough.  We should be much more restrictive
         // than simply looking for ASCII.
-        return Encoding.ASCII.GetString(Encoding.ASCII.GetBytes(value.Trim()));
+        value = value.Normalize();
+        var chars = value.AsSpan().Trim();
+
+        // Encoding.ASCII.GetByteCount() can be at most chars.Length.
+        Span<byte> buffer = stackalloc byte[chars.Length];
+        if (!Encoding.ASCII.TryGetBytes(chars, buffer, out var written))
+            return null;
+
+        return Encoding.ASCII.GetString(buffer[..written]);
     }
 
     /// <summary>
