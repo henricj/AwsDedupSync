@@ -53,9 +53,13 @@ public class S3PathSyncer
 
     public S3PathSyncer() => _s3LinkCreator = new(S3Settings);
 
-    public async Task SyncPathsAsync(IConfiguration config, IEnumerable<string> paths, Func<FileInfo, bool> filePredicate,
+    public async Task SyncPathsAsync(IConfiguration config, IReadOnlyCollection<CollectionPath> paths,
+        Func<FileInfo, bool> filePredicate,
         CancellationToken cancellationToken)
     {
+        foreach (var path in paths)
+            Console.WriteLine($"Syncing {path}");
+
         var bucket = config["Bucket"];
 
         if (string.IsNullOrWhiteSpace(bucket))
@@ -63,11 +67,7 @@ public class S3PathSyncer
 
         Console.WriteLine($"Targeting bucket {bucket}");
 
-        var namedPaths = (from arg in paths
-                let split = arg.IndexOf('=')
-                let validSplit = split > 0 && split < arg.Length - 1
-                select new CollectionPath(validSplit ? arg[..split] : null,
-                    PathUtil.ForceTrailingSlash(Path.GetFullPath(validSplit ? arg[(split + 1)..] : arg))))
+        var namedPaths = paths
             .Distinct()
             .ToArray();
 

@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2014-2017, 2023 Henric Jungheim <software@henric.org>
+// Copyright (c) 2014-2017, 2023 Henric Jungheim <software@henric.org>
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a
 // copy of this software and associated documentation files (the "Software"),
@@ -22,11 +22,13 @@ using System;
 using System.Collections.Frozen;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using System.Net;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using AwsDedupSync;
+using AwsSyncer.Types;
 using AwsSyncer.Utility;
 using Microsoft.Extensions.Configuration;
 
@@ -65,7 +67,7 @@ var flushTask = Task.Run(async () =>
 
 Console.SetOut(writer);
 
-var syncRunner = Sync.CreateSyncRunner(args);
+var syncRunner = Sync.CreateSyncRunner(args.Length > 0 ? args[0] : "");
 
 var sw = new Stopwatch();
 
@@ -101,7 +103,7 @@ static class Sync
     static readonly FrozenSet<string> ExcludeFiles =
         new[] { "desktop.ini", "Thumbs.db" }.ToFrozenSet(StringComparer.OrdinalIgnoreCase);
 
-    public static Func<CancellationToken, Task> CreateSyncRunner(string[] paths)
+    public static Func<CancellationToken, Task> CreateSyncRunner(string configuration)
     {
         var builder = new ConfigurationBuilder()
             .SetBasePath(Directory.GetCurrentDirectory())
@@ -109,9 +111,29 @@ static class Sync
 
         var config = builder.Build();
 
+        var section = string.IsNullOrEmpty(configuration)
+            ? (IConfiguration)config
+            : config.GetSection(configuration);
+
+        var collections = section.GetSection("Collections")
+            .GetChildren()
+            .Select(c =>
+            {
+                if (c.Value is null)
+                    return null;
+
+                var path = Path.GetFullPath(c.Value);
+                if (!Path.Exists(path))
+                    return null;
+
+                return new CollectionPath(c.Key, PathUtil.ForceTrailingSlash(path));
+            })
+            .Where(cp => cp is not null)
+            .ToArray();
+
         var syncer = new S3PathSyncer();
 
-        return ct => syncer.SyncPathsAsync(config, paths,
+        return ct => syncer.SyncPathsAsync(section, collections,
             fi => !ExcludeFiles.Contains(fi.Name), ct);
     }
 }
