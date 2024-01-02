@@ -325,6 +325,7 @@ public sealed class S3Blobs(
                     continue;
                 }
 
+                statistics.Add(s3Object.Size);
                 blobs[key] = s3Object.ETag;
             }
 
