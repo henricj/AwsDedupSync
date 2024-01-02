@@ -19,6 +19,7 @@
 // DEALINGS IN THE SOFTWARE.
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Frozen;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -28,15 +29,30 @@ using System.Threading;
 using System.Threading.Tasks;
 using Amazon.S3;
 using Amazon.S3.Model;
+using AwsSyncer.FileBlobs;
 using AwsSyncer.Types;
 using AwsSyncer.Utility;
 
 namespace AwsSyncer.AWS;
 
-public sealed class S3Blobs(IAmazonS3 amazon, IPathManager pathManager, S3StorageClass s3StorageClass)
+public sealed class S3Blobs(
+    IAmazonS3 amazon,
+    IPathManager pathManager,
+    S3StorageClass s3StorageClass,
+    IStreamFingerprinter fingerprinter,
+    bool writeEnabled,
+    bool deleteEnabled)
     : S3PutBase(amazon)
 {
     const int KeyLength = 512 / 8;
+    const string XAmzMetaRecoveredFrom = "x-amz-meta-recovered-from";
+    const string XAmzMetaSha2 = "x-amz-meta-sha2-256";
+    const string XAmzMetaSha3 = "x-amz-meta-sha3-512";
+    const string CacheControlForever = "public, max-age=31536000, immutable";
+    readonly bool _deleteEnabled = deleteEnabled;
+
+    readonly IStreamFingerprinter _fingerprinter = fingerprinter
+        ?? throw new ArgumentNullException(nameof(fingerprinter));
 
     readonly IPathManager _pathManager = pathManager
         ?? throw new ArgumentNullException(nameof(pathManager));
@@ -44,23 +60,216 @@ public sealed class S3Blobs(IAmazonS3 amazon, IPathManager pathManager, S3Storag
     readonly S3StorageClass _s3StorageClass = s3StorageClass
         ?? throw new ArgumentNullException(nameof(s3StorageClass));
 
-    public async Task<IReadOnlyDictionary<byte[], string>> ListAsync(Statistics statistics, CancellationToken cancellationToken)
+    readonly bool _writeEnabled = writeEnabled;
+
+    public async Task<(FrozenDictionary<byte[], string> blobs, FrozenDictionary<string, string> malformedKeys)> ListAsync(
+        Statistics statistics, CancellationToken cancellationToken)
     {
-        if (S3Util.KeyAlphabet is null)
-            return await ListAsync(_pathManager.BlobPrefix, statistics, cancellationToken).ConfigureAwait(false);
+        async Task<(Dictionary<byte[], string> blobs, Dictionary<string, string> malformedKeys)> GetListAsync()
+        {
+            var tasks = S3Util.KeyAlphabet
+                .Select(ch => ListAsync(_pathManager.BlobPrefix + ch, statistics, cancellationToken))
+                .ToArray();
 
-        var tasks = S3Util.KeyAlphabet
-            .Select(ch => ListAsync(_pathManager.BlobPrefix + ch, statistics, cancellationToken))
-            .ToArray();
+            await Task.WhenAll(tasks).ConfigureAwait(false);
 
-        await Task.WhenAll(tasks).ConfigureAwait(false);
+            var combinedBlobs = tasks
+                .SelectMany(t => t.Result.blobs)
+                .ToDictionary(ByteArrayComparer.Instance);
 
-        return tasks.SelectMany(t => t.Result).ToFrozenDictionary(kv => kv.Key, kv => kv.Value, ByteArrayComparer.Instance);
+            var combinedMalformed = tasks
+                .Where(t => t.Result.malformedKeys is not null)
+                .SelectMany(t => t.Result.malformedKeys)
+                .ToDictionary(StringComparer.Ordinal);
+
+            return (combinedBlobs, combinedMalformed);
+        }
+
+        var (blobs, malformed) = await GetListAsync().ConfigureAwait(false);
+
+        if (malformed?.Count > 0)
+            await RecoverMalformedKeysAsync(blobs, malformed, cancellationToken).ConfigureAwait(false);
+
+        return (blobs.ToFrozenDictionary(ByteArrayComparer.Instance), malformed?.ToFrozenDictionary(StringComparer.Ordinal));
     }
 
-    async Task<Dictionary<byte[], string>> ListAsync(string prefix, Statistics statistics, CancellationToken cancellationToken)
+    async Task RecoverMalformedKeysAsync(Dictionary<byte[], string> blobs, Dictionary<string, string> malformed,
+        CancellationToken cancellationToken)
     {
-        var keys = new Dictionary<byte[], string>(ByteArrayComparer.Instance);
+        ConcurrentDictionary<byte[], string> recovered = new(ByteArrayComparer.Instance);
+        ConcurrentBag<string> deletedMalformed = [];
+
+        var tempDir = Path.GetTempPath();
+
+        await Parallel.ForEachAsync(malformed,
+            new ParallelOptions
+            {
+                CancellationToken = cancellationToken,
+                MaxDegreeOfParallelism = 16
+            },
+            async (kvp, ct) =>
+            {
+                var key = kvp.Key;
+                var eTag = kvp.Value;
+
+                Console.WriteLine($"Recovering malformed key \"{key}\" (eTag {eTag})");
+
+                try
+                {
+                    bool IsExistingCrKey()
+                    {
+                        var decodedKey = _pathManager.GetKeyFromBlobPath(key);
+                        if (decodedKey?.Length != KeyLength + 1 || decodedKey[^1] != 13)
+                            return false;
+
+                        var actualKey = decodedKey[..KeyLength];
+
+                        return blobs.ContainsKey(actualKey) || recovered.ContainsKey(actualKey);
+                    }
+
+                    if (IsExistingCrKey())
+                    {
+                        Console.WriteLine($"Key \"{key}\" is a CR key with an existing fixed BLOB.");
+                    }
+                    else
+                    {
+                        using var response = await AmazonS3.GetObjectAsync(new()
+                        {
+                            BucketName = _pathManager.Bucket,
+                            Key = key,
+                            EtagToMatch = eTag,
+                            ChecksumMode = ChecksumMode.ENABLED
+                        }, ct).ConfigureAwait(false);
+
+                        var path = Path.GetFullPath(Path.GetRandomFileName(), tempDir);
+
+                        await using var file = new FileStream(path, FileMode.Create, FileAccess.ReadWrite,
+                            FileShare.Read,
+                            0, FileOptions.Asynchronous | FileOptions.DeleteOnClose);
+
+                        await response.ResponseStream.CopyToAsync(file, ct);
+
+                        file.Position = 0;
+
+                        var fingerprint = await _fingerprinter.GetFingerprintAsync(file, cancellationToken).ConfigureAwait(false);
+
+                        var destinationKey = _pathManager.GetBlobPath(fingerprint);
+
+                        if (blobs.ContainsKey(fingerprint.Sha3_512) || recovered.ContainsKey(fingerprint.Sha3_512))
+                        {
+                            Console.WriteLine($"Key \"{key}\" already exists as \"{destinationKey}\".");
+                        }
+                        else
+                        {
+                            // We don't have it...
+                            Console.WriteLine($"Copying {key} to {destinationKey}");
+
+                            var copyObjectRequest = new CopyObjectRequest
+                            {
+                                SourceBucket = _pathManager.Bucket,
+                                SourceKey = key,
+                                DestinationBucket = _pathManager.Bucket,
+                                DestinationKey = destinationKey,
+                                Headers =
+                                {
+                                    CacheControl = CacheControlForever,
+                                    ContentType = response.Headers.ContentType,
+                                    ContentDisposition = response.Headers.ContentDisposition
+                                },
+                                MetadataDirective = S3MetadataDirective.REPLACE,
+                                ETagToMatch = eTag,
+                                StorageClass = _s3StorageClass,
+                                ChecksumAlgorithm = ChecksumAlgorithm.SHA256
+                            };
+
+                            foreach (var metadataKey in response.Metadata.Keys)
+                                copyObjectRequest.Metadata[metadataKey] = response.Metadata[metadataKey];
+
+                            if (copyObjectRequest.Metadata.Keys.Contains(XAmzMetaRecoveredFrom))
+                            {
+                                copyObjectRequest.Metadata[$"{XAmzMetaRecoveredFrom}-{DateTime.UtcNow:O}"] =
+                                    copyObjectRequest.Metadata[XAmzMetaRecoveredFrom];
+                            }
+
+                            copyObjectRequest.Metadata[XAmzMetaRecoveredFrom] = key;
+
+                            copyObjectRequest.Metadata[XAmzMetaSha2] = Convert.ToBase64String(fingerprint.Sha2_256);
+                            copyObjectRequest.Metadata[XAmzMetaSha3] = Convert.ToBase64String(fingerprint.Sha3_512);
+
+                            if (_writeEnabled)
+                            {
+                                var copyResponse = await AmazonS3.CopyObjectAsync(copyObjectRequest, cancellationToken)
+                                    .ConfigureAwait(false);
+
+                                bool VerifyChecksum(ReadOnlySpan<byte> sourceHash, string base64destinationHash)
+                                {
+                                    Span<byte> destinationHash = stackalloc byte[sourceHash.Length];
+                                    if (!Convert.TryFromBase64String(base64destinationHash, destinationHash, out var written)
+                                        || written != destinationHash.Length)
+                                    {
+                                        return false;
+                                    }
+
+                                    return destinationHash.SequenceEqual(sourceHash);
+                                }
+
+                                if (!VerifyChecksum(fingerprint.Sha2_256, copyResponse.ChecksumSHA256))
+                                    throw new InvalidOperationException("Checksum mismatch");
+
+                                if (!string.Equals(eTag, copyResponse.ETag, StringComparison.OrdinalIgnoreCase))
+                                {
+                                    Console.WriteLine(
+                                        $"ETag mismatch \"{eTag}\" != \"{copyResponse.ETag}\" for key \"{key}\" copy to \"{destinationKey}\".");
+                                    eTag = copyResponse.ETag;
+                                }
+                            }
+
+                            recovered[fingerprint.Sha3_512] = eTag;
+                        }
+                    }
+
+                    if (!_deleteEnabled)
+                    {
+                        Debug.WriteLine($"Deleting \"{key}\" disabled.");
+                        return;
+                    }
+
+                    Console.WriteLine($"Deleting \"{key}\".");
+
+                    if (_writeEnabled)
+                    {
+                        await AmazonS3.DeleteObjectAsync(new()
+                        {
+                            BucketName = _pathManager.Bucket,
+                            Key = key
+                        }, ct).ConfigureAwait(false);
+                    }
+
+                    deletedMalformed.Add(key);
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Unable to recover \"{key}\": {ex}");
+                }
+            }
+        );
+
+        foreach (var (key, eTag) in recovered)
+        {
+            blobs[key] = eTag;
+        }
+
+        foreach (var key in deletedMalformed)
+        {
+            malformed.Remove(key);
+        }
+    }
+
+    async Task<(Dictionary<byte[], string> blobs, Dictionary<string, string> malformedKeys)> ListAsync(
+        string prefix, Statistics statistics, CancellationToken cancellationToken)
+    {
+        var blobs = new Dictionary<byte[], string>(ByteArrayComparer.Instance);
+        Dictionary<string, string> malformedKeys = null;
 
         var request = new ListObjectsV2Request
         {
@@ -75,13 +284,19 @@ public sealed class S3Blobs(IAmazonS3 amazon, IPathManager pathManager, S3Storag
 
             foreach (var s3Object in response.S3Objects)
             {
+                // Ignore the directory itself.
+                if (string.Equals(s3Object.Key, prefix, StringComparison.Ordinal))
+                    continue;
+
                 var key = _pathManager.GetKeyFromBlobPath(s3Object.Key);
 
                 // Ignore the folder itself (if there is an empty object there).
                 if (key is null)
-                    continue;
+                {
+                    Console.WriteLine($"Unexpected object {s3Object.Key}");
 
-                statistics?.Add(s3Object.Size);
+                    continue;
+                }
 
                 if (key.Length != KeyLength)
                 {
@@ -89,37 +304,32 @@ public sealed class S3Blobs(IAmazonS3 amazon, IPathManager pathManager, S3Storag
                     if (KeyLength + 1 == key.Length && 13 == key[KeyLength])
                     {
                         Console.WriteLine($"Object key {s3Object.Key} has trailing carriage return.");
-
-                        var newKey = key[..KeyLength].ToArray();
-
-                        key = newKey;
                     }
                     else
                     {
                         var metadata = await AmazonS3
                             .GetObjectMetadataAsync(_pathManager.Bucket, s3Object.Key, cancellationToken).ConfigureAwait(false);
 
-                        var alternateKeyHeader = metadata.Metadata["x-amz-meta-sha3-512"];
+                        var alternateKeyHeader = metadata.Metadata[XAmzMetaSha3];
 
                         if (string.IsNullOrWhiteSpace(alternateKeyHeader))
                         {
-                            Console.WriteLine($"Invalid key for object {s3Object.Key}");
+                            Console.WriteLine($"Malformed key for object {s3Object.Key}");
                             continue;
                         }
-
-                        PathUtil.RequireNormalizedAsciiName(alternateKeyHeader);
-
-                        var newKey = S3Util.DecodeKey(alternateKeyHeader);
-
-                        key = newKey;
                     }
+
+                    malformedKeys ??= new(StringComparer.Ordinal);
+                    malformedKeys[s3Object.Key] = s3Object.ETag;
+
+                    continue;
                 }
 
-                keys[key] = s3Object.ETag;
+                blobs[key] = s3Object.ETag;
             }
 
             if (!response.IsTruncated)
-                return keys;
+                return (blobs, malformedKeys);
 
             request.ContinuationToken = response.NextContinuationToken;
         }
@@ -161,11 +371,11 @@ public sealed class S3Blobs(IAmazonS3 amazon, IPathManager pathManager, S3Storag
             return null;
         }
 
-        var blobKey = _pathManager.GetBlobPath(tuple.fingerprint);
+        var fingerprint = tuple.fingerprint.Fingerprint;
+
+        var blobKey = _pathManager.GetBlobPath(fingerprint);
 
         var fileInfo = new FileInfo(fullFilePath);
-
-        var fingerprint = tuple.fingerprint.Fingerprint;
 
         if (fileInfo.Length != fingerprint.Size || fileInfo.LastWriteTimeUtc != tuple.fingerprint.LastModifiedUtc)
         {
@@ -186,12 +396,16 @@ public sealed class S3Blobs(IAmazonS3 amazon, IPathManager pathManager, S3Storag
             MD5Digest = md5Digest,
             Headers =
             {
+                CacheControl = CacheControlForever,
                 ContentType = MimeDetector.GetMimeType(fullFilePath),
                 ContentLength = fingerprint.Size,
-                ContentMD5 = md5Digest,
-                ["x-amz-meta-lastModified"] = tuple.fingerprint.LastModifiedUtc.ToString("O"),
-                ["x-amz-meta-sha2-256"] = base64Sha256,
-                ["x-amz-meta-sha3-512"] = Convert.ToBase64String(fingerprint.Sha3_512)
+                ContentMD5 = md5Digest
+            },
+            Metadata =
+            {
+                [XAmzMetaSha2] = base64Sha256,
+                [XAmzMetaSha3] = Convert.ToBase64String(fingerprint.Sha3_512),
+                ["x-amz-meta-lastModified"] = tuple.fingerprint.LastModifiedUtc.ToString("O")
             },
             StorageClass = _s3StorageClass,
             AutoCloseStream = false,
@@ -201,17 +415,17 @@ public sealed class S3Blobs(IAmazonS3 amazon, IPathManager pathManager, S3Storag
         };
 
         if (!string.IsNullOrEmpty(tuple.path.Collection))
-            request.Headers["x-amz-meta-original-collection"] = tuple.path.Collection;
+            request.Metadata["x-amz-meta-original-collection"] = tuple.path.Collection;
 
         if (!string.IsNullOrEmpty(tuple.path.RelativePath))
-            request.Headers["x-amz-meta-original-path"] = tuple.path.RelativePath;
+            request.Metadata["x-amz-meta-original-path"] = tuple.path.RelativePath;
 
         var fileName = Path.GetFileName(fullFilePath);
 
         if (!string.IsNullOrWhiteSpace(fileName))
         {
             fileName = PathUtil.NormalizeAsciiName(fileName);
-            request.Headers["x-amz-meta-original-name"] = fileName;
+            request.Metadata["x-amz-meta-original-name"] = fileName;
             request.Headers.ContentDisposition = "attachment; filename=" + fileName;
         }
 
