@@ -263,8 +263,11 @@ public sealed partial class MessagePackFileFingerprintStore : IFileFingerprintSt
 
         Debug.WriteLine($"Read {totalSize.BytesToMiB():F2}MiB bytes from {compressedSize.BytesToMiB():F2}MiB file");
 
-        var count = (double)blobs.Count;
-        Debug.WriteLine($"Average size {totalSize / count:F1} bytes or {compressedSize / count:F1} compressed");
+        if (blobs.Count > 0)
+        {
+            var count = (double)blobs.Count;
+            Debug.WriteLine($"Average size {totalSize / count:F1} bytes or {compressedSize / count:F1} compressed");
+        }
 
         if (blobCount > blobs.Count + 100 + blobs.Count / 8)
             needRebuild = true;
