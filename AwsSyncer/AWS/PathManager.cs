@@ -31,7 +31,7 @@ public interface IPathManager
     string BlobPrefix { get; }
     string TreePrefix { get; }
 
-    string GetBlobPath(FileFingerprint fileFingerprint);
+    string GetBlobPath(BlobFingerprint fingerprint);
     byte[] GetKeyFromBlobPath(string blobPath);
 
     string GetTreeNamePrefix(string name);
@@ -87,7 +87,7 @@ public class PathManager : IPathManager
     public string Bucket { get; }
     public string Region { get; }
 
-    public string GetBlobPath(FileFingerprint fileFingerprint) => BlobPrefix + fileFingerprint.Fingerprint.Key();
+    public string GetBlobPath(BlobFingerprint fingerprint) => BlobPrefix + fingerprint.Key();
 
     public byte[] GetKeyFromBlobPath(string blobPath)
     {
@@ -98,10 +98,8 @@ public class PathManager : IPathManager
 
         var key = blobPath[BlobPrefix.Length..];
 
-        if (string.IsNullOrEmpty(key))
+        if (blobPath.Length <= BlobPrefix.Length)
             return null;
-
-        PathUtil.RequireNormalizedAsciiName(key);
 
         return S3Util.DecodeKey(key);
     }

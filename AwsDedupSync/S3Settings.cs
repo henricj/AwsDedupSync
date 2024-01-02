@@ -25,4 +25,6 @@ public sealed class S3Settings
     public bool ActuallyWrite { get; init; } = true;
     public bool UpdateLinks { get; init; } = true;
     public bool UploadBlobs { get; init; } = true;
+    public bool RecoverInvalidKeys { get; init; }
+    public bool DeleteEnabled { get; init; }
 }

@@ -57,6 +57,11 @@ public class S3PathSyncer
         Func<FileInfo, bool> filePredicate,
         CancellationToken cancellationToken)
     {
+        Console.WriteLine($"Write is {S3Settings.ActuallyWrite}");
+        Console.WriteLine($"Upload is {S3Settings.UploadBlobs}");
+        Console.WriteLine($"Update links is {S3Settings.UpdateLinks}");
+        Console.WriteLine($"Recover invalid keys is {S3Settings.RecoverInvalidKeys}");
+
         foreach (var path in paths)
             Console.WriteLine($"Syncing {path}");
 
@@ -71,9 +76,10 @@ public class S3PathSyncer
             .Distinct()
             .ToArray();
 
+        var streamFingerprinter = new StreamFingerprinter(_objectPoolProvider);
         await using var fileFingerprintManager = new FileFingerprintManager(
             new MessagePackFileFingerprintStore(bucket),
-            new StreamFingerprinter(_objectPoolProvider)
+            streamFingerprinter
         );
         await using var blobManager = new BlobManager(fileFingerprintManager);
 
@@ -81,7 +87,8 @@ public class S3PathSyncer
 
         try
         {
-            using var awsManager = AwsManagerFactory.Create(bucket, config);
+            using var awsManager = AwsManagerFactory.Create(bucket, config, streamFingerprinter, S3Settings.ActuallyWrite,
+                S3Settings.DeleteEnabled);
             var uniqueFingerprintBlock = new BufferBlock<(FileFingerprint fingerprint, AnnotatedPath path)>();
             var linkBlock = new BufferBlock<(AnnotatedPath path, FileFingerprint fingerprint)>();
 
@@ -124,7 +131,7 @@ public class S3PathSyncer
             var scanBlobAsync = Task.Run(async () =>
             {
                 // ReSharper disable once AccessToDisposedClosure
-                var knownObjects = await awsManager.ScanAsync(cancellationToken).ConfigureAwait(false);
+                var (knownObjects, invalidKeys) = await awsManager.ScanAsync(cancellationToken).ConfigureAwait(false);
 
                 if (S3Settings.UploadBlobs)
                 {

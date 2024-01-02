@@ -99,7 +99,7 @@ public class S3BlobUploader(S3Settings s3Settings, IFileFingerprintManager finge
             blob => UploadBlobAsync(awsManager, blob, cancellationToken),
             new()
             {
-                MaxDegreeOfParallelism = 4,
+                MaxDegreeOfParallelism = 16,
                 CancellationToken = cancellationToken
             });
 
@@ -129,9 +129,8 @@ public class S3BlobUploader(S3Settings s3Settings, IFileFingerprintManager finge
         if (uploadBlobRequest is null)
             return;
 
-        Console.WriteLine("Upload {0} as {1}",
-            uploadBlobRequest.FileFingerprint.FullFilePath,
-            uploadBlobRequest.FileFingerprint.Fingerprint.Key()[..12]);
+        Console.WriteLine(
+            $"Upload {uploadBlobRequest.FileFingerprint.FullFilePath} as {uploadBlobRequest.FileFingerprint.Fingerprint.Key().AsSpan(0, 12)}");
 
         if (!_s3Settings.ActuallyWrite)
             return;

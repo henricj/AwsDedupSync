@@ -71,7 +71,7 @@ public sealed class S3Links(IAmazonS3 amazonS3, IPathManager pathManager, S3Stor
     public ICreateLinkRequest BuildCreateLinkRequest(string collection, string relativePath, FileFingerprint fileFingerprint,
         string existingETag)
     {
-        var link = '/' + _pathManager.GetBlobPath(fileFingerprint);
+        var link = '/' + _pathManager.GetBlobPath(fileFingerprint.Fingerprint);
 
         var md5Digest = MD5.HashData(Encoding.UTF8.GetBytes(link));
 

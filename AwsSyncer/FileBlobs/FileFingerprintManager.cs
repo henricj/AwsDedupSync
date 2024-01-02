@@ -269,7 +269,7 @@ public sealed class FileFingerprintManager(IFileFingerprintStore fileFingerprint
 
                         var cachedBlob = GetCachedFileFingerprint(filename.FileInfo);
 
-                        if (null != cachedBlob)
+                        if (cachedBlob is not null)
                         {
                             await fileFingerprintTargetBlock.SendAsync(cachedBlob, cancellationToken).ConfigureAwait(false);
 
@@ -277,7 +277,6 @@ public sealed class FileFingerprintManager(IFileFingerprintStore fileFingerprint
                         }
 
                         var host = PathUtil.GetHost(filename.FileInfo.FullName);
-
 
                         var target = targets.GetOrAdd(host, h =>
                         {

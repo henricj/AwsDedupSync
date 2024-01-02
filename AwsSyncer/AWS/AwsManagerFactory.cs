@@ -19,13 +19,15 @@
 // DEALINGS IN THE SOFTWARE.
 
 using Amazon.S3;
+using AwsSyncer.FileBlobs;
 using Microsoft.Extensions.Configuration;
 
 namespace AwsSyncer.AWS;
 
 public static class AwsManagerFactory
 {
-    public static IAwsManager Create(string bucket, IConfiguration awsConfig)
+    public static IAwsManager Create(string bucket, IConfiguration awsConfig, IStreamFingerprinter fingerprinter,
+        bool actuallyWrite, bool deleteEnabled)
     {
         var options = awsConfig.GetAWSOptions();
         var amazonS3 = options.CreateServiceClient<IAmazonS3>();
@@ -34,6 +36,6 @@ public static class AwsManagerFactory
 
         var pathManager = new PathManager(region, bucket);
 
-        return new AwsManager(awsConfig, amazonS3, pathManager);
+        return new AwsManager(awsConfig, amazonS3, pathManager, fingerprinter, actuallyWrite, deleteEnabled);
     }
 }
