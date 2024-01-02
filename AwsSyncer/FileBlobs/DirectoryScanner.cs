@@ -42,7 +42,7 @@ public static class DirectoryScanner
             {
                 // Sequential names tend to fall into the same AWS S3 partition, so we
                 // shuffle things around.
-                RandomUtil.Shuffle(filenames);
+                Random.Shared.Shuffle(filenames);
 
                 return filenames;
             },

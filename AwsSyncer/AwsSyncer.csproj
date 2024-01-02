@@ -40,7 +40,6 @@
     <Compile Include="AWS\PathManager.cs" />
     <Compile Include="Utility\PathUtil.cs" />
     <Compile Include="Utility\QueueExtensions.cs" />
-    <Compile Include="Utility\RandomUtil.cs" />
     <Compile Include="AWS\S3Blobs.cs" />
     <Compile Include="AWS\S3Links.cs" />
     <Compile Include="AWS\AwsManager.cs" />

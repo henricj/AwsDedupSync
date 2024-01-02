@@ -165,7 +165,7 @@ public sealed partial class MessagePackFileFingerprintStore : IFileFingerprintSt
                 Console.WriteLine("Cache read failed: " + ex.Message);
             }
 
-            var rnd = 0.5 * delay * RandomUtil.ThreadLocalRandom.NextDouble();
+            var rnd = 0.5 * delay * Random.Shared.NextDouble();
 
             await Task.Delay(TimeSpan.FromSeconds(delay + rnd), cancellationToken).ConfigureAwait(false);
 
