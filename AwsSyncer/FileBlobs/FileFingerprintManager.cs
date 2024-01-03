@@ -30,6 +30,7 @@ using System.Threading.Tasks.Dataflow;
 using AwsSyncer.FingerprintStore;
 using AwsSyncer.Types;
 using AwsSyncer.Utility;
+using Microsoft.Win32.SafeHandles;
 
 namespace AwsSyncer.FileBlobs;
 
@@ -49,6 +50,8 @@ public sealed class FileFingerprintManager(IFileFingerprintStore fileFingerprint
     : IFileFingerprintManager
 {
     const int FlushCount = 1024;
+    static readonly TimeSpan ModifiedDelay = TimeSpan.FromMilliseconds(15);
+    static readonly TimeSpan ModifiedRandomDelay = TimeSpan.FromMilliseconds(20);
 
     //static readonly TimeSpan FlushInterval = TimeSpan.FromMinutes(10);
     readonly IFileFingerprintStore _blobPathStore = fileFingerprintStore
@@ -174,54 +177,80 @@ public sealed class FileFingerprintManager(IFileFingerprintStore fileFingerprint
         if (cancellationToken.IsCancellationRequested)
             return null;
 
-        var fp = _fingerprinter;
-
-        try
+        for (var retry = 0; retry < 3; ++retry)
         {
-            fileInfo.Refresh();
+            var fullName = fileInfo.FullName;
 
-            if (!fileInfo.Exists)
-                return null;
-
-            BlobFingerprint fingerprint;
-
-            var sw = Stopwatch.StartNew();
-
-            var s = new FileStream(fileInfo.FullName, FileMode.Open, FileAccess.Read, FileShare.Read,
-                0, FileOptions.Asynchronous | FileOptions.SequentialScan);
-
-            await using (s.ConfigureAwait(false))
+            try
             {
-                fingerprint = await fp.GetFingerprintAsync(s, cancellationToken).ConfigureAwait(false);
+                if (!Path.Exists(fullName))
+                {
+                    Debug.WriteLine($"File \"{fullName}\" has disappeared.");
+                    return null;
+                }
+
+                BlobFingerprint fingerprint;
+
+                var sw = Stopwatch.StartNew();
+
+                var s = new FileStream(fullName, FileMode.Open, FileAccess.Read, FileShare.Read,
+                    0, FileOptions.Asynchronous | FileOptions.SequentialScan);
+
+                DateTime modified0;
+                await using (s.ConfigureAwait(false))
+                {
+                    var handle = s.SafeFileHandle;
+                    Debug.Assert(handle is not null);
+
+                    modified0 = await RobustTimestampAsync(handle, cancellationToken).ConfigureAwait(false);
+
+                    var length0 = s.Length;
+                    fingerprint = await _fingerprinter.GetFingerprintAsync(s, cancellationToken).ConfigureAwait(false);
+                    var length1 = s.Length;
+
+                    if (length0 != length1)
+                    {
+                        Debug.WriteLine($"FileFingerprintManager.ProcessFileAsync() \"{fullName}\" length changed during scan.");
+                        continue;
+                    }
+
+                    if (length0 != fileInfo.Length)
+                    {
+                        Debug.WriteLine(
+                            $"FileFingerprintManager.ProcessFileAsync() \"{fullName}\" length changed since file info was updated.");
+                    }
+
+                    Debug.Assert(handle == s.SafeFileHandle);
+
+                    var modified1 = await RobustTimestampAsync(handle, cancellationToken).ConfigureAwait(false);
+                    if (modified0 != modified1)
+                    {
+                        Debug.WriteLine(
+                            $"FileFingerprintManager.ProcessFileAsync() {fullName} modification time changed during scan");
+                        continue;
+                    }
+                }
+
+                sw.Stop();
+
+                Debug.WriteLine(
+                    $"FileFingerprintManager.ProcessFileAsync() \"{fullName}\" scanned {fingerprint.Size.BytesToMiB():F3}MiB in {sw.Elapsed}");
+
+                var fileFingerprint = new FileFingerprint(fullName, modified0, fingerprint, false);
+
+                return fileFingerprint;
             }
-
-            sw.Stop();
-
-            if (fingerprint.Size != fileInfo.Length)
-                return null;
-
-            Debug.WriteLine(
-                $"FileFingerprintManager.ProcessFileAsync({fileInfo.FullName}) scanned {fingerprint.Size.BytesToMiB():F3}MiB in {sw.Elapsed}");
-
-            var fileFingerprint = new FileFingerprint(fileInfo.FullName, fileInfo.LastWriteTimeUtc, fingerprint, false);
-
-            fileInfo.Refresh();
-
-            if (fileInfo.LastWriteTimeUtc != fileFingerprint.LastModifiedUtc ||
-                fileInfo.Length != fileFingerprint.Fingerprint.Size)
+            catch (OperationCanceledException)
             {
-                Debug.WriteLine($"FileFingerprintManager.ProcessFileAsync() {fileInfo.FullName} changed during scan");
-
                 return null;
             }
+            catch (Exception ex)
+            {
+                Debug.WriteLine("FileFingerprintManager.ProcessFileAsync() File {0} failed: {1}", fullName, ex.Message);
+            }
+        }
 
-            return fileFingerprint;
-        }
-        catch (Exception ex)
-        {
-            Debug.WriteLine("FileFingerprintManager.ProcessFileAsync() File {0} failed: {1}", fileInfo.FullName, ex.Message);
-            return null;
-        }
+        return null;
     }
 
     Task StoreFileFingerprintsAsync(BatchBlock<FileFingerprint> storeBatchBlock, CancellationToken cancellationToken)
@@ -247,6 +276,43 @@ public sealed class FileFingerprintManager(IFileFingerprintStore fileFingerprint
         {
             Debug.WriteLine($"FileFingerprintManager store of {fileFingerprints.Count} items failed");
         }
+    }
+
+    /// <summary>
+    ///     Get a timestamp that is repeatable even in the face of an apparent Samba bug sometimes
+    ///     retuning the timestamp for a file other than the one asked for.
+    /// </summary>
+    /// <param name="handle"></param>
+    /// <param name="cancellationToken"></param>
+    /// <returns></returns>
+    /// <exception cref="IOException"></exception>
+    static async ValueTask<DateTime> RobustTimestampAsync(SafeFileHandle handle, CancellationToken cancellationToken)
+    {
+        var match = 0;
+        var last = File.GetLastWriteTimeUtc(handle);
+        for (var retry = 0; retry < 25; ++retry)
+        {
+            var modified = File.GetLastWriteTimeUtc(handle);
+            if (modified == last)
+            {
+                if (++match >= 5)
+                {
+                    if (retry + 1 > match)
+                        Debug.WriteLine($"FileFingerprintManager.RobustTimestamp() {retry + 1} tries to get repeatable timestamp");
+
+                    return modified;
+                }
+            }
+            else
+                match = 0;
+
+            last = modified;
+
+            await Task.Delay(ModifiedDelay + TimeSpan.FromTicks(Random.Shared.NextInt64(ModifiedRandomDelay.Ticks)),
+                cancellationToken);
+        }
+
+        throw new IOException("Unable to get a repeatable timestamp.");
     }
 
     async Task TransformAnnotatedPathsToFileFingerprint(ISourceBlock<AnnotatedPath[]> annotatedPathSourceBlock,
