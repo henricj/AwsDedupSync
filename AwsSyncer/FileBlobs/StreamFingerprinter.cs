@@ -77,10 +77,10 @@ public sealed class StreamFingerprinter(ObjectPoolProvider pipePool) : IStreamFi
 
         public bool TryReset()
         {
-            _pipe.Reset();
             _sha3.Initialize();
             _sha256.TryGetHashAndReset([], out _);
             _md5.TryGetHashAndReset([], out _);
+            _pipe.Reset();
 
             return true;
         }
@@ -151,6 +151,9 @@ public sealed class StreamFingerprinter(ObjectPoolProvider pipePool) : IStreamFi
             {
                 await reader.CompleteAsync().ConfigureAwait(false);
                 await readTask.ConfigureAwait(false);
+
+                // In case the read task was cancelled before it got started.
+                await writer.CompleteAsync().AsTask().ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
             }
 
             var sha3Hash = new byte[Keccak.HashSizeInBytes];
