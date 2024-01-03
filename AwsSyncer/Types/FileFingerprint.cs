@@ -41,6 +41,7 @@ public sealed class FileFingerprint : IEquatable<FileFingerprint>
         Fingerprint = fingerprint ?? throw new ArgumentNullException(nameof(fingerprint));
         FullFilePath = fullFilePath ?? throw new ArgumentNullException(nameof(fullFilePath));
         LastModifiedUtc = lastModifiedUtc;
+        WasCached = false;
     }
 
     public FileFingerprint(string fullFilePath, DateTime lastModifiedUtc, BlobFingerprint fingerprint, bool invalid)

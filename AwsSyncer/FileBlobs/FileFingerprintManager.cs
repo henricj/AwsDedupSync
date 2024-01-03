@@ -236,9 +236,7 @@ public sealed class FileFingerprintManager(IFileFingerprintStore fileFingerprint
                 Debug.WriteLine(
                     $"FileFingerprintManager.ProcessFileAsync() \"{fullName}\" scanned {fingerprint.Size.BytesToMiB():F3}MiB in {sw.Elapsed}");
 
-                var fileFingerprint = new FileFingerprint(fullName, modified0, fingerprint, false);
-
-                return fileFingerprint;
+                return new(fullName, modified0, fingerprint);
             }
             catch (OperationCanceledException)
             {
