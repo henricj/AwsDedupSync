@@ -52,18 +52,16 @@
     <Compile Include="Utility\TaskCollector.cs" />
   </ItemGroup>
   <ItemGroup>
-    <PackageReference Include="AWSSDK.Extensions.NETCore.Setup" Version="3.7.300" />
-    <PackageReference Include="AWSSDK.S3" Version="3.7.305" />
-    <PackageReference Include="MessagePack" Version="2.5.140" />
-    <PackageReference Include="Microsoft.AspNetCore.WebUtilities" Version="8.0.0" />
-    <PackageReference Include="Newtonsoft.Json.Bson">
-      <Version>1.0.2</Version>
-    </PackageReference>
-    <PackageReference Include="System.Configuration.ConfigurationManager" Version="8.0.0" />
-    <PackageReference Include="System.IO.Hashing" Version="8.0.0" />
-    <PackageReference Include="System.IO.Packaging" Version="8.0.1" />
-    <PackageReference Include="System.IO.Pipelines" Version="8.0.0" />
-    <PackageReference Include="ZeroFormatter.Analyzer" Version="1.1.1" />
+    <PackageReference Include="AWSSDK.Extensions.NETCore.Setup" />
+    <PackageReference Include="AWSSDK.S3" />
+    <PackageReference Include="MessagePack" />
+    <PackageReference Include="Microsoft.AspNetCore.WebUtilities" />
+    <PackageReference Include="Newtonsoft.Json.Bson" />
+    <PackageReference Include="System.Configuration.ConfigurationManager" />
+    <PackageReference Include="System.IO.Hashing" />
+    <PackageReference Include="System.IO.Packaging" />
+    <PackageReference Include="System.IO.Pipelines" />
+    <PackageReference Include="ZeroFormatter.Analyzer" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Keccak\Keccak.vcxproj" />
